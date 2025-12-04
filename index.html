@@ -2,320 +2,502 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>純行程規劃 App</title>
-    <!-- 導入 Tailwind CSS CDN，實現無需建構的樣式 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>沖繩旅人 Okinawa Trip</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用 Inter 字體 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'jp-bg': '#F9F8F4',       /* 極簡米白背景 */
+                        'jp-card': '#FFFFFF',     /* 卡片白 */
+                        'jp-primary': '#E3D7A3',  /* 淡黃/亞麻色主色 */
+                        'jp-text': '#595959',     /* 深灰文字 (比純黑柔和) */
+                        'jp-accent': '#D4C485',   /* 深一點的黃色強調 */
+                        'jp-soft-gray': '#F2F2F2'
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        /* 讓可編輯文字框看起來像標題 */
-        .editable-title {
-            outline: none;
-            border: none;
-            background: transparent;
-            width: 100%;
-            text-align: center;
+        /* 隱藏 Scrollbar 但保留功能 */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* 地圖高度 */
+        #map { height: 100%; width: 100%; z-index: 0; }
+        
+        /* App 容器模擬 */
+        body { background-color: #eee; }
+        .app-container {
+            max-width: 480px; /* 手機寬度模擬 */
+            margin: 0 auto;
+            background-color: #F9F8F4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
         }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
+<body>
 
-    <!-- 主容器 -->
-    <div id="app" class="max-w-4xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
+<div id="app" class="app-container text-jp-text">
+
+    <header class="bg-jp-bg pt-6 pb-2 px-4 shadow-sm z-20 shrink-0">
+        <div class="flex justify-between items-center mb-4">
+            <h1 class="text-xl font-bold tracking-widest text-gray-700">OKINAWA <span class="text-xs font-normal">沖繩旅</span></h1>
+            <div class="text-xs bg-jp-primary text-white px-2 py-1 rounded-full">
+                匯率: {{ exchangeRate }}
+            </div>
+        </div>
+
+        <div class="flex space-x-3 overflow-x-auto hide-scrollbar pb-2">
+            <button 
+                v-for="(day, index) in tripDays" 
+                :key="index"
+                @click="selectDay(index)"
+                :class="['flex-shrink-0 w-14 h-16 rounded-xl flex flex-col items-center justify-center transition-all duration-300 border', 
+                currentDayIndex === index ? 'bg-jp-primary text-white border-jp-primary shadow-md transform scale-105' : 'bg-white border-gray-100 text-gray-400']"
+            >
+                <span class="text-xs font-light">Day</span>
+                <span class="text-lg font-bold">{{ index + 1 }}</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 hide-scrollbar relative bg-jp-bg">
         
-        <!-- 4. 主題圖片標頭與可編輯文字 -->
-        <header id="trip-header" class="bg-cover bg-center h-48 flex items-center justify-center relative p-6 rounded-t-xl" 
-                style="background-image: url('https://placehold.co/800x300/6366f1/ffffff?text=Travel+Plan+Header');">
-            <div class="absolute inset-0 bg-black opacity-40"></div>
-            <input type="text" id="trip-title" class="editable-title text-4xl font-extrabold text-white z-10" value="我的夢幻之旅" />
-            <p id="auth-status" class="text-xs text-gray-200 absolute bottom-2 right-4 z-10"></p>
-        </header>
-
-        <div class="p-6">
-            <!-- 5. 日期分頁導航 (4/6~4/11) -->
-            <div id="day-tabs" class="flex flex-wrap border-b border-gray-200 -mt-6">
-                <!-- Tabs will be rendered here -->
+        <div v-if="currentTab === 'schedule'" class="space-y-4 pb-20">
+            <div class="flex justify-between items-end mb-2">
+                <h2 class="text-lg font-bold text-gray-600">本日行程</h2>
+                <button @click="openEditModal()" class="text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg shadow hover:bg-gray-800">
+                    <i class="fas fa-plus mr-1"></i>新增
+                </button>
             </div>
 
-            <!-- 行程內容區塊 -->
-            <section class="mt-6">
-                <h2 id="current-day-title" class="text-2xl font-semibold text-indigo-700 mb-4"></h2>
-                
-                <div id="itinerary-list" class="space-y-4">
-                    <!-- 行程列表將在此處渲染 -->
+            <div v-if="currentItinerary.length === 0" class="text-center py-10 text-gray-400 font-light">
+                <i class="fas fa-coffee text-3xl mb-3 text-jp-primary opacity-50"></i>
+                <p>今天還沒有安排行程喔</p>
+            </div>
+
+            <div v-for="(item, idx) in currentItinerary" :key="item.id" class="bg-jp-card p-4 rounded-2xl shadow-sm border border-gray-50 relative group">
+                <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-100 -z-10 hidden"></div>
+
+                <div class="flex justify-between items-start">
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg font-bold text-jp-accent font-mono">{{ item.time }}</span>
+                        <div>
+                            <h3 class="font-bold text-gray-700">{{ item.location }}</h3>
+                            <div v-if="item.weather" class="text-xs text-blue-400 mt-1 flex items-center bg-blue-50 px-2 py-0.5 rounded w-fit">
+                                <i class="fas fa-cloud-sun mr-1"></i> {{ item.weather }}
+                            </div>
+                            <div v-else class="text-xs text-gray-300 mt-1 flex items-center">
+                                <i class="fas fa-spinner fa-spin mr-1"></i> 載入天氣中...
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                         <button @click="openGoogleMap(item.location)" class="text-gray-300 hover:text-blue-500">
+                            <i class="fas fa-location-arrow"></i>
+                        </button>
+                        <button @click="editItem(idx)" class="text-gray-300 hover:text-jp-primary">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button @click="deleteItem(idx)" class="text-gray-300 hover:text-red-400">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </div>
                 
-                <button id="add-activity-btn" class="mt-6 w-full p-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition font-semibold shadow-md">
-                    + 新增活動
+                <div v-if="item.note" class="mt-3 text-sm text-gray-500 bg-jp-soft-gray p-2 rounded-lg ml-10">
+                    <i class="fas fa-sticky-note mr-1 text-xs opacity-50"></i> {{ item.note }}
+                </div>
+            </div>
+        </div>
+
+        <div v-if="currentTab === 'money'" class="space-y-4 pb-20">
+            <div class="bg-jp-card p-5 rounded-2xl shadow-sm border border-jp-primary/20">
+                <h3 class="text-sm text-gray-400 mb-1">今日總支出 (TWD)</h3>
+                <p class="text-3xl font-bold text-gray-700">$ {{ formatNumber(todayTotalTWD) }}</p>
+                <div class="mt-2 text-xs text-gray-400">
+                    約 {{ formatNumber(todayTotalJPY) }} JPY (匯率: <input type="number" step="0.001" v-model="exchangeRate" class="w-16 bg-transparent border-b border-gray-300 text-center focus:outline-none">)
+                </div>
+            </div>
+
+            <div class="flex gap-2 bg-white p-2 rounded-xl shadow-sm">
+                <input v-model="newExpense.item" type="text" placeholder="項目" class="flex-1 bg-transparent px-2 outline-none text-sm">
+                <input v-model="newExpense.amount" type="number" placeholder="日幣" class="w-20 bg-transparent px-2 outline-none text-sm border-l">
+                <button @click="addExpense" class="bg-jp-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
+                    <i class="fas fa-plus"></i>
                 </button>
-            </section>
+            </div>
+
+            <div class="space-y-2">
+                <div v-for="(exp, idx) in expenses" :key="idx" class="flex justify-between items-center p-3 bg-white rounded-xl border border-gray-50">
+                    <span class="text-gray-600">{{ exp.item }}</span>
+                    <div class="text-right">
+                        <div class="text-sm font-bold">¥ {{ formatNumber(exp.amount) }}</div>
+                        <div class="text-xs text-gray-400">≈ NT$ {{ formatNumber(Math.round(exp.amount * exchangeRate)) }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div v-show="currentTab === 'map'" class="absolute inset-0 z-0 bg-gray-200">
+            <div id="map"></div>
+            <div class="absolute bottom-24 right-4 z-[999]">
+                 <button @click="locateUser" class="bg-white p-3 rounded-full shadow-lg text-blue-500">
+                    <i class="fas fa-crosshairs"></i>
+                </button>
+            </div>
+            <div class="absolute top-4 left-4 right-4 z-[999] bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-md text-xs">
+                <p class="font-bold text-gray-700">今日路徑</p>
+                <p class="text-gray-500">已釘選今日 {{ currentItinerary.length }} 個景點</p>
+            </div>
+        </div>
+
+        <div v-if="currentTab === 'info'" class="space-y-4 pb-20">
+            <div class="bg-white rounded-2xl p-4 shadow-sm">
+                <h3 class="font-bold text-pink-400 mb-3"><i class="fas fa-baby-carriage mr-2"></i>沖繩育嬰熱點</h3>
+                <ul class="space-y-2 text-sm text-gray-600">
+                    <li class="flex justify-between border-b border-gray-100 pb-2">
+                        <span>AEON Mall Rycom (來客夢)</span>
+                        <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded">五星級</span>
+                    </li>
+                    <li class="flex justify-between border-b border-gray-100 pb-2">
+                        <span>Ashibinaa Outlet</span>
+                        <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">基本</span>
+                    </li>
+                    <li class="flex justify-between border-b border-gray-100 pb-2">
+                        <span>美國村 Vessel Hotel</span>
+                        <span class="text-xs bg-blue-100 text-blue-500 px-2 py-0.5 rounded">友善</span>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="bg-white rounded-2xl p-4 shadow-sm">
+                <h3 class="font-bold text-blue-400 mb-3"><i class="fas fa-umbrella-beach mr-2"></i>雨備/備用景點</h3>
+                <ul class="space-y-2 text-sm text-gray-600">
+                    <li class="border-b border-gray-100 pb-2">
+                        <div class="font-bold">DMM Kariyushi 水族館</div>
+                        <div class="text-xs text-gray-400">離機場近，適合最後一天或雨天</div>
+                    </li>
+                    <li class="border-b border-gray-100 pb-2">
+                        <div class="font-bold">TeamLab Future Park</div>
+                        <div class="text-xs text-gray-400">位於 DFS 附近，室內溜小孩首選</div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+    </main>
+
+    <nav class="bg-white border-t border-gray-100 flex justify-around items-center h-20 pb-2 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.02)] z-30">
+        <button @click="switchTab('schedule')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'schedule' ? 'text-jp-primary' : 'text-gray-300']">
+            <i class="fas fa-calendar-alt text-xl mb-1"></i>
+            <span class="text-[10px]">行程</span>
+        </button>
+        <button @click="switchTab('money')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'money' ? 'text-jp-primary' : 'text-gray-300']">
+            <i class="fas fa-yen-sign text-xl mb-1"></i>
+            <span class="text-[10px]">記帳</span>
+        </button>
+        <button @click="switchTab('map')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'map' ? 'text-jp-primary' : 'text-gray-300']">
+            <i class="fas fa-map-marked-alt text-xl mb-1"></i>
+            <span class="text-[10px]">地圖</span>
+        </button>
+        <button @click="switchTab('info')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'info' ? 'text-jp-primary' : 'text-gray-300']">
+            <i class="fas fa-info-circle text-xl mb-1"></i>
+            <span class="text-[10px]">資訊</span>
+        </button>
+    </nav>
+
+    <div v-if="showModal" class="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full sm:w-10/12 rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up">
+            <h3 class="text-lg font-bold mb-4 text-center">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs text-gray-400">時間</label>
+                    <input v-model="form.time" type="time" class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">地點 (用於地圖搜尋)</label>
+                    <input v-model="form.location" type="text" placeholder="例如: 美麗海水族館" class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400">備註</label>
+                    <textarea v-model="form.note" rows="2" placeholder="門票資訊、必吃清單..." class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary"></textarea>
+                </div>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button @click="closeModal" class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-500 font-bold">取消</button>
+                <button @click="saveEvent" class="flex-1 py-3 rounded-xl bg-jp-primary text-white font-bold shadow-lg shadow-jp-primary/30">儲存</button>
+            </div>
         </div>
     </div>
 
-    <!-- JavaScript 邏輯區塊 -->
-    <script type="module">
-        // --- 1. Firebase 導入與配置 ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // ** ⚠️ 重要提醒：請將以下佔位符替換為您自己的 Firebase 專案配置！**
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
+</div>
 
-        const FIREBASE_APP_ID = "simple-trip-itinerary"; // 固定的 App ID
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-        let app;
-        let db;
-        let auth;
-        let currentUserId = null;
-        let tripData = {};
-        let currentDay = "2024-04-06"; // 預設顯示第一天
+<script>
+    const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
 
-        // 固定的 6 個天數，從 4/6 到 4/11
-        const dayDates = [
-            { date: "2024-04-06", display: "04/06" },
-            { date: "2024-04-07", display: "04/07" },
-            { date: "2024-04-08", display: "04/08" },
-            { date: "2024-04-09", display: "04/09" },
-            { date: "2024-04-10", display: "04/10" },
-            { date: "2024-04-11", display: "04/11" },
-        ];
-        
-        const initialTripData = {
-            tripTitle: "我的夢幻之旅",
-            // 初始化每天的行程為空陣列
-            days: dayDates.reduce((acc, day) => {
-                acc[day.date] = [];
-                return acc;
-            }, {})
-        };
+    createApp({
+        setup() {
+            // --- 狀態 ---
+            const currentTab = ref('schedule');
+            const currentDayIndex = ref(0);
+            const tripDays = ref([1, 2, 3, 4, 5]); // 5天行程
+            const exchangeRate = ref(0.215); // 預設匯率
+            
+            // 行程資料 (假資料結構)
+            const allItineraries = ref({
+                0: [
+                    { id: 1, time: '10:00', location: '那霸機場', note: '取車、買飯糰', weather: null },
+                    { id: 2, time: '12:30', location: '系滿魚市場', note: '吃海鮮', weather: null },
+                    { id: 3, time: '15:00', location: '波上宮', note: '看海邊神社', weather: null }
+                ],
+                1: [
+                    { id: 4, time: '09:00', location: '萬座毛', note: '看象鼻岩', weather: null },
+                    { id: 5, time: '11:30', location: '百年古家 大家', note: '預約午餐', weather: null }
+                ],
+                2: [], 3: [], 4: []
+            });
 
-        // --- 2. 初始化 Firebase ---
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-        } catch (e) {
-            document.getElementById('auth-status').textContent = '❌ 配置錯誤';
-            console.error("Firebase 初始化失敗:", e);
-            return; // 終止腳本
-        }
+            // 記帳資料
+            const expenses = ref([
+                { item: 'Lawson 早餐', amount: 850 },
+                { item: '租車費用', amount: 15000 }
+            ]);
+            const newExpense = ref({ item: '', amount: '' });
 
-        // --- 3. 認證與資料監聽 ---
-        function setupAuthAndDataListener() {
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    currentUserId = user.uid;
-                    document.getElementById('auth-status').textContent = `✅ User ID: ${currentUserId.substring(0, 4)}...`;
-                    setupDataListener();
-                } else {
-                    // 執行匿名登入
-                    signInAnonymously(auth).then(res => {
-                        currentUserId = res.user.uid;
-                        document.getElementById('auth-status').textContent = `✅ User ID: ${currentUserId.substring(0, 4)}...`;
-                        setupDataListener();
-                    }).catch(err => {
-                        document.getElementById('auth-status').textContent = '❌ 連線失敗';
-                        console.error("匿名登入失敗:", err);
+            // Modal 相關
+            const showModal = ref(false);
+            const isEditing = ref(false);
+            const editingId = ref(null);
+            const form = ref({ time: '', location: '', note: '' });
+
+            // 地圖相關
+            let mapInstance = null;
+            let markers = [];
+            let userMarker = null;
+
+            // --- Computed ---
+            const currentItinerary = computed(() => {
+                return allItineraries.value[currentDayIndex.value] || [];
+            });
+
+            const todayTotalJPY = computed(() => {
+                return expenses.value.reduce((sum, item) => sum + Number(item.amount), 0);
+            });
+
+            const todayTotalTWD = computed(() => {
+                return Math.round(todayTotalJPY.value * exchangeRate.value);
+            });
+
+            // --- Methods ---
+            const formatNumber = (num) => {
+                return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            };
+
+            const switchTab = (tab) => {
+                currentTab.value = tab;
+                if (tab === 'map') {
+                    // 地圖需要一些時間等待 DOM 顯示
+                    nextTick(() => {
+                        initMap();
+                        updateMapPins();
                     });
                 }
-            });
-        }
-
-        function setupDataListener() {
-            // 使用公開路徑讓所有編輯者都能看到相同的行程
-            const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/itinerary`, 'tripData');
-
-            onSnapshot(tripDocRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    // 確保載入的資料結構正確
-                    const data = docSnap.data();
-                    tripData = { 
-                        ...initialTripData, 
-                        ...data,
-                        days: { ...initialTripData.days, ...data.days } // 確保所有天數的鍵都在
-                    };
-                    renderAll();
-                } else {
-                    console.log("文檔不存在，寫入初始數據...");
-                    setDoc(tripDocRef, initialTripData).catch(e => console.error("寫入初始數據失敗:", e));
-                }
-            }, (error) => {
-                console.error("Firestore 監聽失敗:", error);
-                document.getElementById('auth-status').textContent = `❌ 資料同步錯誤: ${error.message.substring(0, 20)}...`;
-            });
-        }
-
-        // --- 4. 資料操作與同步函數 ---
-
-        async function updateFirestore(newData) {
-            if (!db || !currentUserId) return;
-            const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/itinerary`, 'tripData');
-            try {
-                await setDoc(tripDocRef, newData, { merge: true });
-            } catch (e) {
-                console.error("寫入 Firestore 失敗:", e);
-            }
-        }
-
-        // --- 5. 渲染函數 ---
-        
-        function renderAll() {
-            document.getElementById('trip-title').value = tripData.tripTitle;
-            renderDays();
-            renderActivities();
-        }
-
-        // 渲染日期分頁
-        function renderDays() {
-            const tabsContainer = document.getElementById('day-tabs');
-            tabsContainer.innerHTML = '';
-            
-            dayDates.forEach((day) => {
-                const button = document.createElement('button');
-                const isCurrent = day.date === currentDay;
-                
-                // 顯示 Day X (MM/DD)
-                const dayIndex = dayDates.findIndex(d => d.date === day.date) + 1;
-                const buttonText = `Day ${dayIndex} (${day.display})`;
-                
-                button.textContent = buttonText;
-                button.dataset.date = day.date;
-                button.className = `
-                    px-4 py-2 text-sm font-medium transition-colors duration-200 
-                    ${isCurrent 
-                        ? 'text-white bg-indigo-600 rounded-t-lg' 
-                        : 'text-gray-600 hover:bg-gray-200'
-                    }
-                `;
-                button.addEventListener('click', () => switchDay(day.date));
-                tabsContainer.appendChild(button);
-            });
-            
-            // 更新目前行程標題
-            document.getElementById('current-day-title').textContent = `📅 ${dayDates.find(d => d.date === currentDay)?.display || '行程'} 行程總覽`;
-        }
-
-        // 切換天數
-        function switchDay(date) {
-            currentDay = date;
-            renderAll(); // 重新渲染一切
-        }
-
-        // 渲染選定天數的活動
-        function renderActivities() {
-            const list = document.getElementById('itinerary-list');
-            const currentActivities = tripData.days[currentDay] || [];
-            list.innerHTML = '';
-
-            if (currentActivities.length === 0) {
-                 list.innerHTML = '<p class="text-gray-500 italic p-4 text-center border rounded-lg">本日尚無活動，點擊「+ 新增活動」開始規劃。</p>';
-                 return;
-            }
-
-            // 根據時間排序 (簡單排序)
-            const sortedActivities = [...currentActivities].sort((a, b) => a.time.localeCompare(b.time));
-
-            sortedActivities.forEach(activity => {
-                const linkIcon = activity.locationLink ? 
-                    `<a href="${activity.locationLink.startsWith('http') ? activity.locationLink : 'https://' + activity.locationLink}" target="_blank" class="ml-2 text-indigo-500 hover:text-indigo-700">🔗</a>` : 
-                    '';
-
-                const div = document.createElement('div');
-                div.className = 'p-4 bg-gray-50 rounded-xl border shadow-sm flex gap-4 items-start relative';
-                div.innerHTML = `
-                    <div class="flex-none">
-                         <!-- 時間輸入框 -->
-                        <input type="time" value="${activity.time}" data-id="${activity.id}" data-field="time" class="text-lg font-bold text-indigo-700 bg-transparent border-b-2 border-indigo-300 w-24 p-1 activity-input">
-                    </div>
-                    <div class="flex-1 min-w-0 space-y-1">
-                        <!-- 地點/描述輸入框 -->
-                        <input type="text" value="${activity.description}" data-id="${activity.id}" data-field="description" class="w-full text-base font-semibold text-gray-900 bg-transparent border-b activity-input" placeholder="活動描述/地點">
-                        
-                        <div class="flex items-center text-sm text-gray-500">
-                           <span class="mr-2">Google 連結:</span>
-                            <!-- 連結輸入框 -->
-                            <input type="url" value="${activity.locationLink || ''}" data-id="${activity.id}" data-field="locationLink" class="flex-1 bg-transparent border-b border-dashed text-sm italic activity-input" placeholder="貼上 Google Maps 或其他連結">
-                            ${linkIcon}
-                        </div>
-                    </div>
-                    <button data-id="${activity.id}" class="flex-none p-1 text-red-500 hover:bg-red-100 rounded-full remove-activity-btn absolute top-2 right-2" title="刪除活動">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M15 6V4c0-1-1-2-2-2h-2c-1 0-2 1-2 2v2"/></svg>
-                    </button>
-                `;
-                list.appendChild(div);
-            });
-        }
-
-        // --- 6. 事件監聽器 (Delegation 方式處理) ---
-
-        // 編輯行程標題
-        document.getElementById('trip-title').addEventListener('change', (e) => {
-            const newTitle = e.target.value.trim() || "旅行規劃";
-            updateFirestore({ tripTitle: newTitle });
-        });
-
-        // 新增活動
-        document.getElementById('add-activity-btn').addEventListener('click', () => {
-            const newActivity = { 
-                id: crypto.randomUUID(), 
-                time: "12:00", 
-                description: "新景點/活動",
-                locationLink: ""
             };
-            
-            const currentActivities = tripData.days[currentDay] || [];
-            const newActivities = [...currentActivities, newActivity];
 
-            // 更新 Firestore
-            updateFirestore({ days: { [currentDay]: newActivities } });
-        });
+            const selectDay = (index) => {
+                currentDayIndex.value = index;
+                fetchWeatherForDay(); // 切換日期時更新天氣
+            };
 
-        // 編輯活動 (時間、描述、連結)
-        document.getElementById('itinerary-list').addEventListener('change', (e) => {
-            if (e.target.classList.contains('activity-input')) {
-                const id = e.target.dataset.id;
-                const field = e.target.dataset.field;
-                const value = e.target.value.trim();
+            // CRUD - 行程
+            const openEditModal = () => {
+                isEditing.value = false;
+                form.value = { time: '09:00', location: '', note: '' };
+                showModal.value = true;
+            };
+
+            const editItem = (index) => {
+                const item = currentItinerary.value[index];
+                form.value = { ...item };
+                isEditing.value = true;
+                editingId.value = index;
+                showModal.value = true;
+            };
+
+            const saveEvent = () => {
+                if (!form.value.location) return alert('請輸入地點');
                 
-                const currentActivities = tripData.days[currentDay] || [];
-                
-                const updatedActivities = currentActivities.map(activity => {
-                    if (activity.id === id) {
-                        return { ...activity, [field]: value };
-                    }
-                    return activity;
+                // 簡單抓取天氣 (模擬)
+                const mockWeather = getRandomWeather();
+
+                if (isEditing.value) {
+                    allItineraries.value[currentDayIndex.value][editingId.value] = {
+                        ...form.value,
+                        weather: mockWeather
+                    };
+                } else {
+                    allItineraries.value[currentDayIndex.value].push({
+                        id: Date.now(),
+                        ...form.value,
+                        weather: mockWeather
+                    });
+                    // 排序
+                    allItineraries.value[currentDayIndex.value].sort((a, b) => a.time.localeCompare(b.time));
+                }
+                closeModal();
+            };
+
+            const deleteItem = (index) => {
+                if(confirm('確定刪除?')) {
+                    allItineraries.value[currentDayIndex.value].splice(index, 1);
+                }
+            };
+
+            const closeModal = () => showModal.value = false;
+
+            // 記帳
+            const addExpense = () => {
+                if(!newExpense.value.item || !newExpense.value.amount) return;
+                expenses.value.unshift({ ...newExpense.value });
+                newExpense.value = { item: '', amount: '' };
+            };
+
+            // 導航
+            const openGoogleMap = (loc) => {
+                window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc + ' 沖繩')}`, '_blank');
+            };
+
+            // 天氣 (Mock API 呼叫，因為真實 API 需要經緯度與 CORS 處理)
+            // 在真實專案中，你會使用 OpenWeatherMap 或 OpenMeteo
+            const fetchWeatherForDay = () => {
+                currentItinerary.value.forEach(item => {
+                    if(!item.weather) item.weather = getRandomWeather();
                 });
+            };
+
+            const getRandomWeather = () => {
+                const temp = Math.floor(Math.random() * (30 - 24) + 24); // 24-30度
+                const conditions = ['晴', '多雲', '偶雨'];
+                return `${temp}°C ${conditions[Math.floor(Math.random() * conditions.length)]}`;
+            };
+
+            // --- Map Logic (Leaflet) ---
+            const initMap = () => {
+                if (mapInstance) return; // 已經初始化過
                 
-                // 更新 Firestore
-                updateFirestore({ days: { [currentDay]: updatedActivities } });
-            }
-        });
-
-        // 移除活動
-        document.getElementById('itinerary-list').addEventListener('click', (e) => {
-            if (e.target.closest('.remove-activity-btn')) {
-                const id = e.target.closest('.remove-activity-btn').dataset.id;
-
-                const currentActivities = tripData.days[currentDay] || [];
-                const newActivities = currentActivities.filter(a => a.id !== id);
+                // 沖繩中心點
+                mapInstance = L.map('map').setView([26.2124, 127.6809], 10);
                 
-                // 更新 Firestore
-                updateFirestore({ days: { [currentDay]: newActivities } });
-            }
-        });
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OpenStreetMap &copy; CARTO',
+                    subdomains: 'abcd',
+                    maxZoom: 19
+                }).addTo(mapInstance);
+            };
 
-        // 啟動 App
-        setupAuthAndDataListener();
+            // 將地名轉為座標 (Geocoding) 
+            // 注意：這裡是模擬座標，因為沒有後端 Geocoding API Key
+            // 實作上會用 Nominatim (OSM) 但它有頻率限制，這裡用亂數偏移模擬分佈在沖繩
+            const updateMapPins = async () => {
+                if (!mapInstance) return;
 
-    </script>
+                // 清除舊 Markers
+                markers.forEach(m => mapInstance.removeLayer(m));
+                markers = [];
+
+                const baseLat = 26.2124;
+                const baseLng = 127.6809;
+
+                currentItinerary.value.forEach((item, index) => {
+                    // 模擬：根據 index 稍微偏移座標，讓它們不要疊在一起
+                    // 真實情況：你需要用 Geocoding API 把 item.location 轉成 lat/lng
+                    const lat = baseLat + (Math.random() - 0.5) * 0.4; 
+                    const lng = baseLng + (Math.random() - 0.5) * 0.2;
+
+                    const marker = L.marker([lat, lng])
+                        .addTo(mapInstance)
+                        .bindPopup(`<b>${item.time}</b><br>${item.location}`);
+                    
+                    markers.push(marker);
+                });
+
+                // 調整視野以包含所有點
+                if (markers.length > 0) {
+                    const group = new L.featureGroup(markers);
+                    mapInstance.fitBounds(group.getBounds().pad(0.2));
+                }
+            };
+
+            const locateUser = () => {
+                if (!navigator.geolocation) return alert("您的瀏覽器不支援定位");
+                
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const { latitude, longitude } = pos.coords;
+                    
+                    if (userMarker) mapInstance.removeLayer(userMarker);
+                    
+                    // 自定義藍色圓點 Icon
+                    const userIcon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: "<div style='background-color:#4285F4;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 0 5px rgba(0,0,0,0.3);'></div>",
+                        iconSize: [12, 12],
+                        iconAnchor: [6, 6]
+                    });
+
+                    userMarker = L.marker([latitude, longitude], {icon: userIcon}).addTo(mapInstance);
+                    mapInstance.setView([latitude, longitude], 13);
+                }, err => {
+                    alert("無法獲取位置: " + err.message);
+                });
+            };
+
+            onMounted(() => {
+                fetchWeatherForDay();
+            });
+
+            return {
+                currentTab, switchTab,
+                tripDays, currentDayIndex, selectDay,
+                currentItinerary,
+                showModal, isEditing, form, openEditModal, editItem, saveEvent, deleteItem, closeModal,
+                expenses, newExpense, addExpense, todayTotalJPY, todayTotalTWD, exchangeRate, formatNumber,
+                openGoogleMap, locateUser
+            };
+        }
+    }).mount('#app');
+</script>
+
+<style>
+    /* 修正地圖圖層順序 */
+    .leaflet-pane { z-index: 0 !important; }
+    .leaflet-control { z-index: 10 !important; }
+    .leaflet-top, .leaflet-bottom { z-index: 10 !important; }
+</style>
 </body>
 </html>
