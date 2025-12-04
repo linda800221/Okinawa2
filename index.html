@@ -1,23 +1,31 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// 導入標準的 Firebase/Firestore 模組
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import {
     Plus, X, Calendar, MapPin, Bus, User, DollarSign, Wallet, Repeat,
     Clipboard, Edit3, Trash2, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-// --- 全局變數和 Firebase 設定 ---
+// --- Firebase 配置與初始化 ---
+// ** ⚠️ 重要提醒：請將以下佔位符替換為您自己的 Firebase 專案配置！**
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY", // 您的 API 金鑰
+    authDomain: "YOUR_AUTH_DOMAIN", // 您的 Auth Domain
+    projectId: "YOUR_PROJECT_ID", // 您的 Project ID
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+    appId: "YOUR_APP_ID" // 您的 App ID
+};
 
-// 從 Canvas 環境取得配置
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+// 用於 Firestore 路徑的唯一 ID (模擬 Canvas App ID)
+const FIREBASE_APP_ID = "github-trip-planner"; 
 
-// 初始化 Firebase 應用和服務 (在 App 元件外部進行)
-const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
-const db = app ? getFirestore(app) : null;
-const auth = app ? getAuth(app) : null;
+// 初始化 Firebase 應用和服務
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
 
 // --- 資料結構定義 ---
 const initialTripData = {
@@ -45,25 +53,6 @@ const initialTripData = {
     expenses: [] // { id, description, amount, currency, paidBy, participants }
 };
 
-// --- 通用工具函數 ---
-
-// 轉換 PCM 數據到 WAV 格式的工具函數 (為了 TTS 兼容性，雖然這裡不需要，但保留標準庫函數)
-function pcmToWav(pcmData, sampleRate) {
-    // ... (PCM to WAV conversion logic)
-    return new Blob([], { type: 'audio/wav' });
-}
-
-// Base64 轉換工具函數
-function base64ToArrayBuffer(base64) {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-}
-
 // --- 主要 App 元件 ---
 
 const App = () => {
@@ -71,39 +60,33 @@ const App = () => {
     const [userId, setUserId] = useState(null);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('itinerary'); // 'itinerary', 'expense', 'currency'
+    const [activeTab, setActiveTab] = useState('itinerary');
     const [error, setError] = useState(null);
 
     // 1. Firebase 認證和初始化
     useEffect(() => {
-        if (!auth) {
-            setError("Firebase 初始化失敗，請檢查配置。");
+        if (!auth || !db) {
+            setError("Firebase 配置錯誤或遺失。請檢查 App.jsx 頂部的 firebaseConfig。");
             return;
         }
 
-        const setupAuth = async () => {
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (err) {
-                console.error("Firebase 認證失敗:", err);
-                setError("Firebase 認證失敗: " + err.message);
-            }
-        };
-
+        // 監聽認證狀態，並在未登入時自動匿名登入
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
                 setUserId(user.uid);
+                setIsAuthReady(true);
             } else {
-                setUserId(null);
+                // 如果沒有用戶，進行匿名登入
+                signInAnonymously(auth).then(res => {
+                    setUserId(res.user.uid);
+                    setIsAuthReady(true);
+                }).catch(err => {
+                    console.error("Firebase 匿名認證失敗:", err);
+                    setError("Firebase 認證失敗: " + err.message);
+                });
             }
-            setIsAuthReady(true);
         });
 
-        setupAuth();
         return () => unsubscribe();
     }, []);
 
@@ -112,12 +95,12 @@ const App = () => {
         if (!db || !isAuthReady || !userId) return;
 
         // 公開資料路徑: /artifacts/{appId}/public/data/trips/{docId}
-        const tripDocRef = doc(db, `artifacts/${appId}/public/data/trips`, 'tripData');
+        // 使用固定的 FIREBASE_APP_ID 和固定的 'tripData' 文件名
+        const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/trips`, 'tripData');
 
         const unsubscribe = onSnapshot(tripDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
-                // 由於 firestore 可能不會儲存空陣列，這裡確保結構完整
                 setTripData(prev => ({
                     ...prev,
                     ...data,
@@ -142,10 +125,9 @@ const App = () => {
     const updateFirestore = useCallback(async (newData) => {
         if (!db || !userId) return;
         setIsSaving(true);
-        const tripDocRef = doc(db, `artifacts/${appId}/public/data/trips`, 'tripData');
+        const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/trips`, 'tripData');
 
         try {
-            // 使用 setDoc 合併模式更新
             await setDoc(tripDocRef, newData, { merge: true });
         } catch (e) {
             console.error("寫入 Firestore 失敗:", e);
@@ -198,13 +180,14 @@ const App = () => {
     };
 
     // 顯示載入或錯誤訊息
-    if (!isAuthReady || !db) {
+    if (!isAuthReady) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 text-gray-700">
                 {error ? (
                     <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
                         <p className="font-bold">發生錯誤</p>
                         <p>{error}</p>
+                        <p className="mt-2 text-xs">請檢查 App.jsx 頂部的 firebaseConfig 是否正確填寫。</p>
                     </div>
                 ) : (
                     <p className="text-xl">正在載入 Firebase 與使用者認證...</p>
@@ -353,7 +336,7 @@ const ItinerarySection = ({ tripData, saveItinerary }) => {
 
     const removeDay = (id) => {
         // 使用自定義 modal 提示取代 window.confirm
-        if (!confirm('確定要刪除這一天所有行程嗎？')) return; 
+        if (!window.confirm('確定要刪除這一天所有行程嗎？')) return; 
         const newDays = tripData.days.filter(d => d.id !== id).map((d, index) => ({ ...d, day: index + 1 }));
         saveItinerary(newDays);
     };
@@ -610,7 +593,7 @@ const ExpenseTracker = ({ tripData, saveExpenses, handleMemberChange, addMember,
     // 計算總餘額
     const calculateBalances = useMemo(() => {
         const memberBalances = tripData.members.reduce((acc, member) => ({ ...acc, [member]: 0 }), {});
-        // 匯率更新：根據最新的 TWD/JPY 匯率 4.99 (先前為 4.5)
+        // 匯率更新：根據最新的 TWD/JPY 匯率 4.99
         const TWD_TO_JPY_RATE = 4.99; 
 
         tripData.expenses.forEach(exp => {
@@ -879,9 +862,8 @@ const CurrencyConverter = () => {
     // 模擬匯率獲取 (替換成真實 API 呼叫)
     const fetchExchangeRate = useCallback(async (from, to) => {
         setLoading(true);
-        // --- 這裡應該是真實的 API 呼叫 ---
-        // 由於無法安全呼叫外部 API，我們使用硬編碼模擬值 (參考 TWD/JPY 匯率: 1 TWD 約等於 4.99 JPY)
-        await new Promise(resolve => setTimeout(resolve, 500)); // 模擬延遲
+        // 模擬延遲
+        await new Promise(resolve => setTimeout(resolve, 500)); 
 
         let mockRate = 0;
         let display = 0;
@@ -900,15 +882,6 @@ const CurrencyConverter = () => {
             display = 1;
         }
         
-        // --- 實際應用中請使用類似以下結構呼叫 API ---
-        /*
-        const response = await fetch('YOUR_EXCHANGE_RATE_API_ENDPOINT');
-        const data = await response.json();
-        const actualRate = data.rates[to] / data.rates[from];
-        setRate(actualRate);
-        setDisplayRate(actualRate.toFixed(4));
-        */
-
         setRate(mockRate);
         setDisplayRate(display.toFixed(4));
         setLoading(false);
