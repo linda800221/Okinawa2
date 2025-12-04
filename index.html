@@ -20,8 +20,7 @@
       box-shadow: 0 0 30px rgba(0,0,0,0.5);
       overflow: visible;/* 先測試圖片是否有顯示 */
     }
-    /* 背景淡圖（如果你還想保留） */ 
-    /*
+    /* 背景淡圖（如果你還想保留） */
     .bg-pattern {
       position: absolute;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -31,9 +30,8 @@
       opacity: 0.05;
       z-index: 0;
       pointer-events: none;
-    }*/
+    }
     /* 封面主圖 */
-    /*
     .cover-image {
       width: 100%;
       height: 280px;
@@ -44,7 +42,7 @@
       border-bottom-right-radius: 20px;
       position: relative;
       z-index: 5;  /* 讓它蓋過背景與內容 */
-    }*/
+    }
   </style>
 </head>
 <body>
@@ -85,7 +83,7 @@
         <div v-show="currentTab === 'info'" class="space-y-5 animate-fade-in pt-2">
             
             <div class="relative h-64 rounded-3xl overflow-hidden shadow-xl group">
-                <img src="https://images.unsplash.com/photo-1544551763-46a8723ba3f9?auto=format&fit=crop&w=800&q=80" alt="Okinawa" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+                <img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e" alt="Okinawa" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
                 <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col items-center justify-end pb-6 text-black text-center p-4">
                     <h1 class="text-3xl font-bold tracking-widest mb-1 drop-shadow-lg">OKINAWA</h1>
                     <p class="text-lg font-medium drop-shadow-md">沖繩家族旅行</p>
