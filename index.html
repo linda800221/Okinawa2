@@ -1,968 +1,321 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-// 導入標準的 Firebase/Firestore 模組
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, onSnapshot, setDoc } from 'firebase/firestore';
-import {
-    Plus, X, Calendar, MapPin, Bus, User, DollarSign, Wallet, Repeat,
-    Clipboard, Edit3, Trash2, ChevronDown, ChevronUp
-} from 'lucide-react';
-
-// --- Firebase 配置與初始化 ---
-// ** ⚠️ 重要提醒：請將以下佔位符替換為您自己的 Firebase 專案配置！**
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // 您的 API 金鑰
-    authDomain: "YOUR_AUTH_DOMAIN", // 您的 Auth Domain
-    projectId: "YOUR_PROJECT_ID", // 您的 Project ID
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID" // 您的 App ID
-};
-
-// 用於 Firestore 路徑的唯一 ID (模擬 Canvas App ID)
-const FIREBASE_APP_ID = "github-trip-planner"; 
-
-// 初始化 Firebase 應用和服務
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-
-// --- 資料結構定義 ---
-const initialTripData = {
-    name: "我的夢幻之旅：東京五日遊",
-    startDate: "2024-11-28",
-    endDate: "2024-12-02",
-    headerImage: "https://placehold.co/1600x400/1e40af/ffffff?text=美好的旅行+從規劃開始",
-    members: ["我", "旅伴A", "旅伴B"],
-    days: [
-        {
-            id: crypto.randomUUID(),
-            day: 1,
-            activities: [
-                {
-                    id: crypto.randomUUID(),
-                    time: "10:00",
-                    description: "抵達東京成田機場 (NRT)",
-                    transport: "飛機/電車",
-                    mapLink: "https://maps.app.goo.gl/example",
-                    image: "https://placehold.co/100x100/4c75f2/ffffff?text=機場",
-                }
-            ]
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>純行程規劃 App</title>
+    <!-- 導入 Tailwind CSS CDN，實現無需建構的樣式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 使用 Inter 字體 -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* 讓可編輯文字框看起來像標題 */
+        .editable-title {
+            outline: none;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: center;
         }
-    ],
-    expenses: [] // { id, description, amount, currency, paidBy, participants }
-};
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
 
-// --- 主要 App 元件 ---
+    <!-- 主容器 -->
+    <div id="app" class="max-w-4xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
+        
+        <!-- 4. 主題圖片標頭與可編輯文字 -->
+        <header id="trip-header" class="bg-cover bg-center h-48 flex items-center justify-center relative p-6 rounded-t-xl" 
+                style="background-image: url('https://placehold.co/800x300/6366f1/ffffff?text=Travel+Plan+Header');">
+            <div class="absolute inset-0 bg-black opacity-40"></div>
+            <input type="text" id="trip-title" class="editable-title text-4xl font-extrabold text-white z-10" value="我的夢幻之旅" />
+            <p id="auth-status" class="text-xs text-gray-200 absolute bottom-2 right-4 z-10"></p>
+        </header>
 
-const App = () => {
-    const [tripData, setTripData] = useState(initialTripData);
-    const [userId, setUserId] = useState(null);
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState('itinerary');
-    const [error, setError] = useState(null);
-
-    // 1. Firebase 認證和初始化
-    useEffect(() => {
-        if (!auth || !db) {
-            setError("Firebase 配置錯誤或遺失。請檢查 App.jsx 頂部的 firebaseConfig。");
-            return;
-        }
-
-        // 監聽認證狀態，並在未登入時自動匿名登入
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                setUserId(user.uid);
-                setIsAuthReady(true);
-            } else {
-                // 如果沒有用戶，進行匿名登入
-                signInAnonymously(auth).then(res => {
-                    setUserId(res.user.uid);
-                    setIsAuthReady(true);
-                }).catch(err => {
-                    console.error("Firebase 匿名認證失敗:", err);
-                    setError("Firebase 認證失敗: " + err.message);
-                });
-            }
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    // 2. Firestore 資料同步 (使用 onSnapshot 實現即時更新)
-    useEffect(() => {
-        if (!db || !isAuthReady || !userId) return;
-
-        // 公開資料路徑: /artifacts/{appId}/public/data/trips/{docId}
-        // 使用固定的 FIREBASE_APP_ID 和固定的 'tripData' 文件名
-        const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/trips`, 'tripData');
-
-        const unsubscribe = onSnapshot(tripDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setTripData(prev => ({
-                    ...prev,
-                    ...data,
-                    days: data.days || [],
-                    expenses: data.expenses || [],
-                    members: data.members || initialTripData.members
-                }));
-            } else {
-                // 如果文檔不存在，寫入初始數據
-                console.log("文檔不存在，寫入初始數據...");
-                setDoc(tripDocRef, initialTripData).catch(e => console.error("寫入初始數據失敗:", e));
-            }
-        }, (err) => {
-            console.error("Firestore 即時監聽失敗:", err);
-            setError("資料監聽失敗: " + err.message);
-        });
-
-        return () => unsubscribe();
-    }, [isAuthReady, userId]);
-
-    // 3. 資料寫入函數 (防抖動)
-    const updateFirestore = useCallback(async (newData) => {
-        if (!db || !userId) return;
-        setIsSaving(true);
-        const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/trips`, 'tripData');
-
-        try {
-            await setDoc(tripDocRef, newData, { merge: true });
-        } catch (e) {
-            console.error("寫入 Firestore 失敗:", e);
-            setError("儲存失敗: " + e.message);
-        } finally {
-            setIsSaving(false);
-        }
-    }, [userId]);
-
-
-    // 4. 通用資料處理函數
-
-    const handleTripInfoChange = (field, value) => {
-        const newData = { ...tripData, [field]: value };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    const handleMemberChange = (index, value) => {
-        const newMembers = [...tripData.members];
-        newMembers[index] = value;
-        const newData = { ...tripData, members: newMembers };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    const addMember = () => {
-        const newData = { ...tripData, members: [...tripData.members, `新成員${tripData.members.length + 1}`] };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    const removeMember = (index) => {
-        const newMembers = tripData.members.filter((_, i) => i !== index);
-        const newData = { ...tripData, members: newMembers };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    const saveItinerary = (newDays) => {
-        const newData = { ...tripData, days: newDays };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    const saveExpenses = (newExpenses) => {
-        const newData = { ...tripData, expenses: newExpenses };
-        setTripData(newData);
-        updateFirestore(newData);
-    };
-
-    // 顯示載入或錯誤訊息
-    if (!isAuthReady) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50 text-gray-700">
-                {error ? (
-                    <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-                        <p className="font-bold">發生錯誤</p>
-                        <p>{error}</p>
-                        <p className="mt-2 text-xs">請檢查 App.jsx 頂部的 firebaseConfig 是否正確填寫。</p>
-                    </div>
-                ) : (
-                    <p className="text-xl">正在載入 Firebase 與使用者認證...</p>
-                )}
+        <div class="p-6">
+            <!-- 5. 日期分頁導航 (4/6~4/11) -->
+            <div id="day-tabs" class="flex flex-wrap border-b border-gray-200 -mt-6">
+                <!-- Tabs will be rendered here -->
             </div>
-        );
-    }
 
-    return (
-        <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-            <Header tripData={tripData} handleTripInfoChange={handleTripInfoChange} userId={userId} isSaving={isSaving} />
-
-            {/* 導航標籤 */}
-            <nav className="sticky top-0 z-10 bg-white shadow-md">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-16">
-                        <div className="flex">
-                            <TabButton
-                                label="行程安排"
-                                icon={<Calendar className="w-5 h-5" />}
-                                isActive={activeTab === 'itinerary'}
-                                onClick={() => setActiveTab('itinerary')}
-                            />
-                            <TabButton
-                                label="花費分帳"
-                                icon={<Wallet className="w-5 h-5" />}
-                                isActive={activeTab === 'expense'}
-                                onClick={() => setActiveTab('expense')}
-                            />
-                            <TabButton
-                                label="匯率計算機"
-                                icon={<Repeat className="w-5 h-5" />}
-                                isActive={activeTab === 'currency'}
-                                onClick={() => setActiveTab('currency')}
-                            />
-                        </div>
-                        <div className="text-sm text-gray-500">
-                            使用者 ID: <span className="font-mono text-xs">{userId}</span>
-                        </div>
-                    </div>
+            <!-- 行程內容區塊 -->
+            <section class="mt-6">
+                <h2 id="current-day-title" class="text-2xl font-semibold text-indigo-700 mb-4"></h2>
+                
+                <div id="itinerary-list" class="space-y-4">
+                    <!-- 行程列表將在此處渲染 -->
                 </div>
-            </nav>
-
-            <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-                {activeTab === 'itinerary' && (
-                    <ItinerarySection tripData={tripData} saveItinerary={saveItinerary} />
-                )}
-                {activeTab === 'expense' && (
-                    <ExpenseTracker tripData={tripData} saveExpenses={saveExpenses} handleMemberChange={handleMemberChange} addMember={addMember} removeMember={removeMember} />
-                )}
-                {activeTab === 'currency' && (
-                    <CurrencyConverter />
-                )}
-            </main>
+                
+                <button id="add-activity-btn" class="mt-6 w-full p-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition font-semibold shadow-md">
+                    + 新增活動
+                </button>
+            </section>
         </div>
-    );
-};
+    </div>
 
-// --- 子元件: 導航標籤按鈕 ---
-const TabButton = ({ label, icon, isActive, onClick }) => (
-    <button
-        onClick={onClick}
-        className={`flex items-center px-4 py-2 font-medium text-sm transition duration-150 ease-in-out border-b-2
-            ${isActive
-                ? 'border-indigo-600 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-    >
-        {icon}
-        <span className="ml-2">{label}</span>
-    </button>
-);
-
-
-// --- 子元件: 頂部 Header ---
-const Header = ({ tripData, handleTripInfoChange, userId, isSaving }) => (
-    <header className="relative mb-8 shadow-lg">
-        {/* 標題圖片 */}
-        <div
-            className="h-64 bg-cover bg-center"
-            style={{ backgroundImage: `url(${tripData.headerImage})` }}
-            role="img"
-            aria-label="旅行標題背景圖片"
-        >
-            <div className="absolute inset-0 bg-black opacity-40"></div>
-        </div>
-
-        <div className="absolute inset-0 flex flex-col justify-end p-6 md:p-10">
-            {/* 旅行名稱 */}
-            <input
-                type="text"
-                value={tripData.name}
-                onChange={(e) => handleTripInfoChange('name', e.target.value)}
-                className="text-4xl md:text-5xl font-extrabold text-white bg-transparent border-b-2 border-transparent focus:border-indigo-400 focus:outline-none transition duration-150 w-full mb-2"
-                placeholder="輸入旅行名稱"
-            />
-            {/* 旅行日期 */}
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center text-lg text-indigo-200">
-                <div className="flex items-center bg-white bg-opacity-10 rounded-lg p-2">
-                    <Calendar className="w-5 h-5 mr-2" />
-                    <label className="mr-2">從:</label>
-                    <input
-                        type="date"
-                        value={tripData.startDate}
-                        onChange={(e) => handleTripInfoChange('startDate', e.target.value)}
-                        className="bg-transparent focus:outline-none"
-                    />
-                </div>
-                <div className="flex items-center bg-white bg-opacity-10 rounded-lg p-2">
-                    <label className="mr-2">到:</label>
-                    <input
-                        type="date"
-                        value={tripData.endDate}
-                        onChange={(e) => handleTripInfoChange('endDate', e.target.value)}
-                        className="bg-transparent focus:outline-none"
-                    />
-                </div>
-            </div>
-            {/* 儲存狀態 */}
-            <div className="absolute top-4 right-4 text-sm text-white bg-indigo-600 px-3 py-1 rounded-full shadow-lg">
-                {isSaving ? '正在儲存...' : '已同步'}
-            </div>
-        </div>
-    </header>
-);
-
-// --- 子元件: 行程規劃 ---
-
-const ItinerarySection = ({ tripData, saveItinerary }) => {
-    const [openDayId, setOpenDayId] = useState(tripData.days[0]?.id);
-
-    const toggleDay = (dayId) => {
-        setOpenDayId(openDayId === dayId ? null : dayId);
-    };
-
-    const addDay = () => {
-        const newDayNumber = tripData.days.length + 1;
-        const newDay = {
-            id: crypto.randomUUID(),
-            day: newDayNumber,
-            activities: [],
+    <!-- JavaScript 邏輯區塊 -->
+    <script type="module">
+        // --- 1. Firebase 導入與配置 ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // ** ⚠️ 重要提醒：請將以下佔位符替換為您自己的 Firebase 專案配置！**
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
-        saveItinerary([...tripData.days, newDay]);
-        setOpenDayId(newDay.id);
-    };
 
-    const removeDay = (id) => {
-        // 使用自定義 modal 提示取代 window.confirm
-        if (!window.confirm('確定要刪除這一天所有行程嗎？')) return; 
-        const newDays = tripData.days.filter(d => d.id !== id).map((d, index) => ({ ...d, day: index + 1 }));
-        saveItinerary(newDays);
-    };
+        const FIREBASE_APP_ID = "simple-trip-itinerary"; // 固定的 App ID
 
-    const addActivity = (dayId) => {
-        const newDays = tripData.days.map(day => {
-            if (day.id === dayId) {
-                return {
-                    ...day,
-                    activities: [
-                        ...day.activities,
-                        {
-                            id: crypto.randomUUID(),
-                            time: new Date().toTimeString().slice(0, 5),
-                            description: "新增活動名稱",
-                            transport: "步行",
-                            mapLink: "",
-                            image: ""
-                        }
-                    ]
-                };
-            }
-            return day;
-        });
-        saveItinerary(newDays);
-    };
+        let app;
+        let db;
+        let auth;
+        let currentUserId = null;
+        let tripData = {};
+        let currentDay = "2024-04-06"; // 預設顯示第一天
 
-    const updateActivity = (dayId, activityId, field, value) => {
-        const newDays = tripData.days.map(day => {
-            if (day.id === dayId) {
-                return {
-                    ...day,
-                    activities: day.activities.map(activity => {
-                        if (activity.id === activityId) {
-                            return { ...activity, [field]: value };
-                        }
-                        return activity;
-                    })
-                };
-            }
-            return day;
-        });
-        saveItinerary(newDays);
-    };
+        // 固定的 6 個天數，從 4/6 到 4/11
+        const dayDates = [
+            { date: "2024-04-06", display: "04/06" },
+            { date: "2024-04-07", display: "04/07" },
+            { date: "2024-04-08", display: "04/08" },
+            { date: "2024-04-09", display: "04/09" },
+            { date: "2024-04-10", display: "04/10" },
+            { date: "2024-04-11", display: "04/11" },
+        ];
+        
+        const initialTripData = {
+            tripTitle: "我的夢幻之旅",
+            // 初始化每天的行程為空陣列
+            days: dayDates.reduce((acc, day) => {
+                acc[day.date] = [];
+                return acc;
+            }, {})
+        };
 
-    const removeActivity = (dayId, activityId) => {
-        const newDays = tripData.days.map(day => {
-            if (day.id === dayId) {
-                return {
-                    ...day,
-                    activities: day.activities.filter(a => a.id !== activityId)
-                };
-            }
-            return day;
-        });
-        saveItinerary(newDays);
-    };
-
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-2xl">
-            <h2 className="text-3xl font-bold mb-6 text-indigo-700">旅行行程安排</h2>
-
-            <div className="space-y-4">
-                {tripData.days.map((day) => (
-                    <div key={day.id} className="border border-gray-200 rounded-xl overflow-hidden shadow-md">
-                        {/* Day Header */}
-                        <div
-                            className="flex items-center justify-between bg-indigo-50 p-4 cursor-pointer hover:bg-indigo-100 transition"
-                            onClick={() => toggleDay(day.id)}
-                        >
-                            <h3 className="text-xl font-semibold text-indigo-800">
-                                Day {day.day}
-                                <span className="ml-3 text-sm font-normal text-gray-500">
-                                    {new Date(tripData.startDate).getTime() + (day.day - 1) * 86400000 < new Date(tripData.endDate).getTime() + 86400000 ? new Date(new Date(tripData.startDate).getTime() + (day.day - 1) * 86400000).toISOString().split('T')[0] : '日期超出範圍'}
-                                </span>
-                            </h3>
-                            <div className='flex items-center gap-2'>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); removeDay(day.id); }}
-                                    className="p-1 text-red-500 hover:text-red-700 transition"
-                                    title="刪除這一天行程"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                                {openDayId === day.id ? <ChevronUp className="w-5 h-5 text-indigo-600" /> : <ChevronDown className="w-5 h-5 text-indigo-600" />}
-                            </div>
-                        </div>
-
-                        {/* Activities List */}
-                        {openDayId === day.id && (
-                            <div className="p-4 space-y-6">
-                                {day.activities.length === 0 && (
-                                    <p className="text-gray-500 text-center italic">本日尚無活動。點擊下方按鈕新增。</p>
-                                )}
-                                {day.activities
-                                    .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
-                                    .map((activity) => (
-                                        <ActivityCard
-                                            key={activity.id}
-                                            dayId={day.id}
-                                            activity={activity}
-                                            updateActivity={updateActivity}
-                                            removeActivity={removeActivity}
-                                        />
-                                    ))}
-                                <button
-                                    onClick={() => addActivity(day.id)}
-                                    className="w-full flex items-center justify-center p-3 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition shadow-md"
-                                >
-                                    <Plus className="w-5 h-5 mr-2" /> 新增活動
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-            <div className="mt-6 border-t pt-4">
-                <button
-                    onClick={addDay}
-                    className="w-full flex items-center justify-center p-4 bg-green-500 text-white rounded-xl hover:bg-green-600 transition shadow-lg text-lg font-semibold"
-                >
-                    <Calendar className="w-6 h-6 mr-2" /> 新增一個旅行日
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// --- 子元件: 單一活動卡片 ---
-const ActivityCard = ({ dayId, activity, updateActivity, removeActivity }) => {
-    const [isEditing, setIsEditing] = useState(false);
-
-    const formatMapLink = (link) => {
+        // --- 2. 初始化 Firebase ---
         try {
-            const url = new URL(link);
-            // 簡化顯示，只顯示 domain 和部分 path
-            return `${url.hostname}${url.pathname.substring(0, 20)}${url.pathname.length > 20 ? '...' : ''}`;
-        } catch {
-            return link || "無地圖連結";
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (e) {
+            document.getElementById('auth-status').textContent = '❌ 配置錯誤';
+            console.error("Firebase 初始化失敗:", e);
+            return; // 終止腳本
         }
-    };
 
-    return (
-        <div className="flex bg-gray-50 p-4 rounded-xl shadow-inner border border-gray-100 hover:shadow-lg transition duration-200">
-            {/* Left Timeline/Time Block */}
-            <div className="flex flex-col items-center mr-4 w-16 min-w-16">
-                <input
-                    type="time"
-                    value={activity.time}
-                    onChange={(e) => updateActivity(dayId, activity.id, 'time', e.target.value)}
-                    className="text-lg font-bold text-indigo-700 bg-transparent border-0 focus:ring-0 w-full"
-                />
-                <Bus className="w-5 h-5 text-gray-400 my-1" />
-                <input
-                    type="text"
-                    value={activity.transport}
-                    onChange={(e) => updateActivity(dayId, activity.id, 'transport', e.target.value)}
-                    className="text-xs text-center text-gray-500 bg-transparent border-0 focus:ring-0 w-full"
-                    placeholder="交通"
-                />
-            </div>
-
-            {/* Right Content */}
-            <div className="flex-1 space-y-2">
-                {/* Main Description */}
-                <textarea
-                    value={activity.description}
-                    onChange={(e) => updateActivity(dayId, activity.id, 'description', e.target.value)}
-                    className="w-full text-lg font-semibold text-gray-900 bg-transparent border-b resize-none focus:ring-0 focus:border-indigo-500"
-                    placeholder="活動/景點名稱與說明"
-                    rows={isEditing ? 3 : 1}
-                />
-
-                {/* Details Row (only visible when editing) */}
-                {(isEditing || activity.mapLink || activity.image) && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                        {/* Map Link */}
-                        <div className="flex items-center">
-                            <MapPin className="w-4 h-4 text-red-500 mr-2" />
-                            {isEditing ? (
-                                <input
-                                    type="url"
-                                    value={activity.mapLink}
-                                    onChange={(e) => updateActivity(dayId, activity.id, 'mapLink', e.target.value)}
-                                    className="w-full p-1 border rounded"
-                                    placeholder="Google Map 連結"
-                                />
-                            ) : (
-                                <a href={activity.mapLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">
-                                    {formatMapLink(activity.mapLink)}
-                                </a>
-                            )}
-                        </div>
-
-                        {/* Image URL */}
-                        <div className="flex items-center">
-                            <Clipboard className="w-4 h-4 text-green-500 mr-2" />
-                            {isEditing ? (
-                                <input
-                                    type="url"
-                                    value={activity.image}
-                                    onChange={(e) => updateActivity(dayId, activity.id, 'image', e.target.value)}
-                                    className="w-full p-1 border rounded"
-                                    placeholder="圖片連結 (URL)"
-                                />
-                            ) : (
-                                <span className="text-gray-500 truncate">{activity.image ? '有圖片' : '無圖片'}</span>
-                            )}
-                        </div>
-
-                        {/* Image Preview (Optional) */}
-                        {activity.image && (
-                            <div className="col-span-full md:col-span-1 flex justify-center">
-                                <img
-                                    src={activity.image}
-                                    alt="活動預覽圖"
-                                    className="w-full max-w-24 h-24 object-cover rounded-lg shadow"
-                                    onError={(e) => e.target.src = 'https://placehold.co/100x100/CCCCCC/000000?text=圖片載入失敗'}
-                                />
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col ml-4 space-y-2">
-                <button
-                    onClick={() => setIsEditing(!isEditing)}
-                    className={`p-2 rounded-full ${isEditing ? 'bg-yellow-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
-                    title={isEditing ? "完成編輯" : "編輯活動"}
-                >
-                    <Edit3 className="w-5 h-5" />
-                </button>
-                <button
-                    onClick={() => removeActivity(dayId, activity.id)}
-                    className="p-2 rounded-full bg-red-100 text-red-600 hover:bg-red-200"
-                    title="刪除活動"
-                >
-                    <Trash2 className="w-5 h-5" />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-
-// --- 子元件: 花費分帳記錄 ---
-
-const ExpenseTracker = ({ tripData, saveExpenses, handleMemberChange, addMember, removeMember }) => {
-    const [newExpense, setNewExpense] = useState({ description: '', amount: 0, currency: 'TWD', paidBy: tripData.members[0] || '我', participants: tripData.members });
-    const [balance, setBalance] = useState({});
-
-    // 計算總餘額
-    const calculateBalances = useMemo(() => {
-        const memberBalances = tripData.members.reduce((acc, member) => ({ ...acc, [member]: 0 }), {});
-        // 匯率更新：根據最新的 TWD/JPY 匯率 4.99
-        const TWD_TO_JPY_RATE = 4.99; 
-
-        tripData.expenses.forEach(exp => {
-            const amountInTWD = exp.currency === 'JPY' ? exp.amount / TWD_TO_JPY_RATE : exp.amount;
-            const participantsCount = exp.participants.length || 1;
-            const share = amountInTWD / participantsCount;
-
-            // 1. 紀錄支付者墊付
-            if (memberBalances.hasOwnProperty(exp.paidBy)) {
-                memberBalances[exp.paidBy] += amountInTWD;
-            }
-
-            // 2. 扣除參與者應付的份額
-            exp.participants.forEach(p => {
-                if (memberBalances.hasOwnProperty(p)) {
-                    memberBalances[p] -= share;
+        // --- 3. 認證與資料監聽 ---
+        function setupAuthAndDataListener() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUserId = user.uid;
+                    document.getElementById('auth-status').textContent = `✅ User ID: ${currentUserId.substring(0, 4)}...`;
+                    setupDataListener();
+                } else {
+                    // 執行匿名登入
+                    signInAnonymously(auth).then(res => {
+                        currentUserId = res.user.uid;
+                        document.getElementById('auth-status').textContent = `✅ User ID: ${currentUserId.substring(0, 4)}...`;
+                        setupDataListener();
+                    }).catch(err => {
+                        document.getElementById('auth-status').textContent = '❌ 連線失敗';
+                        console.error("匿名登入失敗:", err);
+                    });
                 }
             });
+        }
+
+        function setupDataListener() {
+            // 使用公開路徑讓所有編輯者都能看到相同的行程
+            const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/itinerary`, 'tripData');
+
+            onSnapshot(tripDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    // 確保載入的資料結構正確
+                    const data = docSnap.data();
+                    tripData = { 
+                        ...initialTripData, 
+                        ...data,
+                        days: { ...initialTripData.days, ...data.days } // 確保所有天數的鍵都在
+                    };
+                    renderAll();
+                } else {
+                    console.log("文檔不存在，寫入初始數據...");
+                    setDoc(tripDocRef, initialTripData).catch(e => console.error("寫入初始數據失敗:", e));
+                }
+            }, (error) => {
+                console.error("Firestore 監聽失敗:", error);
+                document.getElementById('auth-status').textContent = `❌ 資料同步錯誤: ${error.message.substring(0, 20)}...`;
+            });
+        }
+
+        // --- 4. 資料操作與同步函數 ---
+
+        async function updateFirestore(newData) {
+            if (!db || !currentUserId) return;
+            const tripDocRef = doc(db, `artifacts/${FIREBASE_APP_ID}/public/data/itinerary`, 'tripData');
+            try {
+                await setDoc(tripDocRef, newData, { merge: true });
+            } catch (e) {
+                console.error("寫入 Firestore 失敗:", e);
+            }
+        }
+
+        // --- 5. 渲染函數 ---
+        
+        function renderAll() {
+            document.getElementById('trip-title').value = tripData.tripTitle;
+            renderDays();
+            renderActivities();
+        }
+
+        // 渲染日期分頁
+        function renderDays() {
+            const tabsContainer = document.getElementById('day-tabs');
+            tabsContainer.innerHTML = '';
+            
+            dayDates.forEach((day) => {
+                const button = document.createElement('button');
+                const isCurrent = day.date === currentDay;
+                
+                // 顯示 Day X (MM/DD)
+                const dayIndex = dayDates.findIndex(d => d.date === day.date) + 1;
+                const buttonText = `Day ${dayIndex} (${day.display})`;
+                
+                button.textContent = buttonText;
+                button.dataset.date = day.date;
+                button.className = `
+                    px-4 py-2 text-sm font-medium transition-colors duration-200 
+                    ${isCurrent 
+                        ? 'text-white bg-indigo-600 rounded-t-lg' 
+                        : 'text-gray-600 hover:bg-gray-200'
+                    }
+                `;
+                button.addEventListener('click', () => switchDay(day.date));
+                tabsContainer.appendChild(button);
+            });
+            
+            // 更新目前行程標題
+            document.getElementById('current-day-title').textContent = `📅 ${dayDates.find(d => d.date === currentDay)?.display || '行程'} 行程總覽`;
+        }
+
+        // 切換天數
+        function switchDay(date) {
+            currentDay = date;
+            renderAll(); // 重新渲染一切
+        }
+
+        // 渲染選定天數的活動
+        function renderActivities() {
+            const list = document.getElementById('itinerary-list');
+            const currentActivities = tripData.days[currentDay] || [];
+            list.innerHTML = '';
+
+            if (currentActivities.length === 0) {
+                 list.innerHTML = '<p class="text-gray-500 italic p-4 text-center border rounded-lg">本日尚無活動，點擊「+ 新增活動」開始規劃。</p>';
+                 return;
+            }
+
+            // 根據時間排序 (簡單排序)
+            const sortedActivities = [...currentActivities].sort((a, b) => a.time.localeCompare(b.time));
+
+            sortedActivities.forEach(activity => {
+                const linkIcon = activity.locationLink ? 
+                    `<a href="${activity.locationLink.startsWith('http') ? activity.locationLink : 'https://' + activity.locationLink}" target="_blank" class="ml-2 text-indigo-500 hover:text-indigo-700">🔗</a>` : 
+                    '';
+
+                const div = document.createElement('div');
+                div.className = 'p-4 bg-gray-50 rounded-xl border shadow-sm flex gap-4 items-start relative';
+                div.innerHTML = `
+                    <div class="flex-none">
+                         <!-- 時間輸入框 -->
+                        <input type="time" value="${activity.time}" data-id="${activity.id}" data-field="time" class="text-lg font-bold text-indigo-700 bg-transparent border-b-2 border-indigo-300 w-24 p-1 activity-input">
+                    </div>
+                    <div class="flex-1 min-w-0 space-y-1">
+                        <!-- 地點/描述輸入框 -->
+                        <input type="text" value="${activity.description}" data-id="${activity.id}" data-field="description" class="w-full text-base font-semibold text-gray-900 bg-transparent border-b activity-input" placeholder="活動描述/地點">
+                        
+                        <div class="flex items-center text-sm text-gray-500">
+                           <span class="mr-2">Google 連結:</span>
+                            <!-- 連結輸入框 -->
+                            <input type="url" value="${activity.locationLink || ''}" data-id="${activity.id}" data-field="locationLink" class="flex-1 bg-transparent border-b border-dashed text-sm italic activity-input" placeholder="貼上 Google Maps 或其他連結">
+                            ${linkIcon}
+                        </div>
+                    </div>
+                    <button data-id="${activity.id}" class="flex-none p-1 text-red-500 hover:bg-red-100 rounded-full remove-activity-btn absolute top-2 right-2" title="刪除活動">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-trash-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M15 6V4c0-1-1-2-2-2h-2c-1 0-2 1-2 2v2"/></svg>
+                    </button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        // --- 6. 事件監聽器 (Delegation 方式處理) ---
+
+        // 編輯行程標題
+        document.getElementById('trip-title').addEventListener('change', (e) => {
+            const newTitle = e.target.value.trim() || "旅行規劃";
+            updateFirestore({ tripTitle: newTitle });
         });
 
-        return memberBalances;
-    }, [tripData.expenses, tripData.members]);
+        // 新增活動
+        document.getElementById('add-activity-btn').addEventListener('click', () => {
+            const newActivity = { 
+                id: crypto.randomUUID(), 
+                time: "12:00", 
+                description: "新景點/活動",
+                locationLink: ""
+            };
+            
+            const currentActivities = tripData.days[currentDay] || [];
+            const newActivities = [...currentActivities, newActivity];
 
-    useEffect(() => {
-        setBalance(calculateBalances);
-    }, [calculateBalances]);
+            // 更新 Firestore
+            updateFirestore({ days: { [currentDay]: newActivities } });
+        });
 
-    const handleNewExpenseChange = (field, value) => {
-        setNewExpense(prev => ({ ...prev, [field]: value }));
-    };
+        // 編輯活動 (時間、描述、連結)
+        document.getElementById('itinerary-list').addEventListener('change', (e) => {
+            if (e.target.classList.contains('activity-input')) {
+                const id = e.target.dataset.id;
+                const field = e.target.dataset.field;
+                const value = e.target.value.trim();
+                
+                const currentActivities = tripData.days[currentDay] || [];
+                
+                const updatedActivities = currentActivities.map(activity => {
+                    if (activity.id === id) {
+                        return { ...activity, [field]: value };
+                    }
+                    return activity;
+                });
+                
+                // 更新 Firestore
+                updateFirestore({ days: { [currentDay]: updatedActivities } });
+            }
+        });
 
-    const handleParticipantToggle = (member) => {
-        const newParticipants = newExpense.participants.includes(member)
-            ? newExpense.participants.filter(p => p !== member)
-            : [...newExpense.participants, member];
+        // 移除活動
+        document.getElementById('itinerary-list').addEventListener('click', (e) => {
+            if (e.target.closest('.remove-activity-btn')) {
+                const id = e.target.closest('.remove-activity-btn').dataset.id;
 
-        handleNewExpenseChange('participants', newParticipants);
-    };
+                const currentActivities = tripData.days[currentDay] || [];
+                const newActivities = currentActivities.filter(a => a.id !== id);
+                
+                // 更新 Firestore
+                updateFirestore({ days: { [currentDay]: newActivities } });
+            }
+        });
 
-    const addExpense = () => {
-        if (!newExpense.description || !newExpense.amount || newExpense.amount <= 0) return;
+        // 啟動 App
+        setupAuthAndDataListener();
 
-        const expenseToAdd = {
-            ...newExpense,
-            id: crypto.randomUUID(),
-            amount: parseFloat(newExpense.amount),
-        };
-
-        saveExpenses([...tripData.expenses, expenseToAdd]);
-        setNewExpense({ description: '', amount: 0, currency: 'TWD', paidBy: tripData.members[0] || '我', participants: tripData.members }); // 重置
-    };
-
-    const removeExpense = (id) => {
-        const newExpenses = tripData.expenses.filter(e => e.id !== id);
-        saveExpenses(newExpenses);
-    };
-
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-2xl space-y-8">
-            <h2 className="text-3xl font-bold text-indigo-700">花費分帳記錄</h2>
-
-            {/* 1. 總結餘額區塊 */}
-            <BalanceSummary balance={balance} members={tripData.members} />
-
-            {/* 2. 成員管理區塊 */}
-            <MemberManagement tripData={tripData} handleMemberChange={handleMemberChange} addMember={addMember} removeMember={removeMember} />
-
-            {/* 3. 新增花費區塊 */}
-            <AddExpenseForm
-                newExpense={newExpense}
-                members={tripData.members}
-                handleNewExpenseChange={handleNewExpenseChange}
-                handleParticipantToggle={handleParticipantToggle}
-                addExpense={addExpense}
-            />
-
-            {/* 4. 費用列表 */}
-            <ExpenseList expenses={tripData.expenses} removeExpense={removeExpense} />
-        </div>
-    );
-};
-
-// --- 子元件: 餘額總結 ---
-const BalanceSummary = ({ balance, members }) => {
-    const toSettle = Object.entries(balance)
-        .filter(([member, amount]) => Math.abs(amount) > 0.01)
-        .sort(([, a], [, b]) => b - a); // 墊付多的人在前
-
-    if (toSettle.length === 0) {
-        return <p className="text-center p-4 bg-green-50 text-green-700 rounded-lg">所有帳目已結清！</p>;
-    }
-
-    return (
-        <div className="bg-indigo-50 p-4 rounded-xl shadow-inner border border-indigo-200">
-            <h3 className="text-xl font-semibold mb-3 text-indigo-800 flex items-center">
-                <DollarSign className="w-5 h-5 mr-2" /> 帳目結算總覽 (TWD基準)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {toSettle.map(([member, amount]) => (
-                    <div key={member} className={`p-3 rounded-lg flex justify-between items-center ${amount > 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-                        <span className="font-medium">{member}</span>
-                        <span className={`text-lg font-bold ${amount > 0 ? 'text-green-700' : 'text-red-700'}`}>
-                            {amount > 0 ? `應收: NT$${amount.toFixed(2)}` : `應付: NT$${Math.abs(amount).toFixed(2)}`}
-                        </span>
-                    </div>
-                ))}
-            </div>
-            <p className="text-xs mt-2 text-gray-500 italic">
-                *正數表示此成員應收回的墊付款項；負數表示此成員應付出的款項。
-            </p>
-        </div>
-    );
-};
-
-// --- 子元件: 成員管理 ---
-const MemberManagement = ({ tripData, handleMemberChange, addMember, removeMember }) => (
-    <div className="p-4 border-b border-gray-200">
-        <h3 className="text-xl font-semibold mb-3 text-indigo-700">旅行成員管理</h3>
-        <div className="space-y-3">
-            {tripData.members.map((member, index) => (
-                <div key={index} className="flex items-center gap-2">
-                    <input
-                        type="text"
-                        value={member}
-                        onChange={(e) => handleMemberChange(index, e.target.value)}
-                        className="flex-1 p-2 border rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="成員名稱"
-                    />
-                    <button
-                        onClick={() => removeMember(index)}
-                        className="p-2 text-red-500 hover:bg-red-100 rounded-full transition"
-                        title="移除成員"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-            ))}
-            <button
-                onClick={addMember}
-                className="w-full flex items-center justify-center p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition"
-            >
-                <Plus className="w-5 h-5 mr-2" /> 新增成員
-            </button>
-        </div>
-    </div>
-);
-
-// --- 子元件: 新增花費表單 ---
-const AddExpenseForm = ({ newExpense, members, handleNewExpenseChange, handleParticipantToggle, addExpense }) => (
-    <div className="p-4 bg-gray-50 rounded-xl shadow-inner">
-        <h3 className="text-xl font-semibold mb-4 text-indigo-700">新增一筆花費</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {/* 描述 */}
-            <input
-                type="text"
-                placeholder="花費描述 (e.g. 午餐、門票)"
-                value={newExpense.description}
-                onChange={(e) => handleNewExpenseChange('description', e.target.value)}
-                className="p-3 border rounded-lg md:col-span-2"
-            />
-            {/* 金額 */}
-            <input
-                type="number"
-                placeholder="金額"
-                value={newExpense.amount || ''}
-                onChange={(e) => handleNewExpenseChange('amount', e.target.value)}
-                className="p-3 border rounded-lg"
-            />
-            {/* 幣別 */}
-            <select
-                value={newExpense.currency}
-                onChange={(e) => handleNewExpenseChange('currency', e.target.value)}
-                className="p-3 border rounded-lg appearance-none"
-            >
-                <option value="TWD">台幣 (TWD)</option>
-                <option value="JPY">日幣 (JPY)</option>
-            </select>
-            {/* 支付者 */}
-            <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">誰先墊付了這筆費用？</label>
-                <select
-                    value={newExpense.paidBy}
-                    onChange={(e) => handleNewExpenseChange('paidBy', e.target.value)}
-                    className="w-full p-3 border rounded-lg appearance-none"
-                >
-                    {members.map(member => (
-                        <option key={member} value={member}>{member}</option>
-                    ))}
-                </select>
-            </div>
-            {/* 參與者分帳 */}
-            <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1">這筆費用由誰分攤？</label>
-                <div className="flex flex-wrap gap-2">
-                    {members.map(member => (
-                        <button
-                            key={member}
-                            onClick={() => handleParticipantToggle(member)}
-                            className={`p-2 rounded-full border transition ${newExpense.participants.includes(member) ? 'bg-indigo-500 text-white border-indigo-700' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
-                        >
-                            {member}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-        <button
-            onClick={addExpense}
-            className="w-full p-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold shadow-md"
-        >
-            <Plus className="w-5 h-5 inline mr-2" /> 記錄花費
-        </button>
-    </div>
-);
-
-// --- 子元件: 花費記錄列表 ---
-const ExpenseList = ({ expenses, removeExpense }) => (
-    <div>
-        <h3 className="text-xl font-semibold mb-3 text-indigo-700">所有花費記錄 ({expenses.length} 筆)</h3>
-        {expenses.length === 0 ? (
-            <p className="text-gray-500 italic text-center p-4 border rounded-lg">尚無花費記錄。</p>
-        ) : (
-            <div className="space-y-3">
-                {expenses.map((expense) => (
-                    <div key={expense.id} className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center hover:shadow-md transition">
-                        <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-lg truncate">{expense.description}</p>
-                            <p className="text-sm text-gray-600">
-                                <span className="font-bold text-indigo-600 mr-1">{expense.paidBy}</span> 墊付
-                                <span className="mx-2">|</span>
-                                分攤人: {expense.participants.join(', ')}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-3 ml-4">
-                            <span className="text-xl font-bold text-gray-800 whitespace-nowrap">
-                                {expense.currency} {expense.amount.toLocaleString()}
-                            </span>
-                            <button
-                                onClick={() => removeExpense(expense.id)}
-                                className="p-2 text-red-500 hover:bg-red-100 rounded-full transition"
-                                title="刪除記錄"
-                            >
-                                <Trash2 className="w-5 h-5" />
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        )}
-    </div>
-);
-
-// --- 子元件: 匯率計算機 ---
-
-const CurrencyConverter = () => {
-    const [amount, setAmount] = useState(100);
-    const [fromCurrency, setFromCurrency] = useState('TWD');
-    const [toCurrency, setToCurrency] = useState('JPY');
-    const [rate, setRate] = useState(0); // 實際運算使用的匯率
-    const [displayRate, setDisplayRate] = useState(0); // 顯示給使用者看的參考匯率
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(0);
-
-    const currencies = { TWD: "台幣 (TWD)", JPY: "日幣 (JPY)" };
-
-    // 模擬匯率獲取 (替換成真實 API 呼叫)
-    const fetchExchangeRate = useCallback(async (from, to) => {
-        setLoading(true);
-        // 模擬延遲
-        await new Promise(resolve => setTimeout(resolve, 500)); 
-
-        let mockRate = 0;
-        let display = 0;
-
-        // 根據 2024/11/27 的匯率資料，設定 1 TWD = 4.99 JPY
-        const TWD_TO_JPY_RATE = 4.99;
-
-        if (from === 'TWD' && to === 'JPY') {
-            mockRate = TWD_TO_JPY_RATE;
-            display = TWD_TO_JPY_RATE;
-        } else if (from === 'JPY' && to === 'TWD') {
-            mockRate = 1 / TWD_TO_JPY_RATE;
-            display = 1 / TWD_TO_JPY_RATE;
-        } else {
-            mockRate = 1;
-            display = 1;
-        }
-        
-        setRate(mockRate);
-        setDisplayRate(display.toFixed(4));
-        setLoading(false);
-    }, []);
-
-    useEffect(() => {
-        fetchExchangeRate(fromCurrency, toCurrency);
-    }, [fromCurrency, toCurrency, fetchExchangeRate]);
-
-    useEffect(() => {
-        setResult(amount * rate);
-    }, [amount, rate]);
-
-    const handleSwap = () => {
-        setFromCurrency(toCurrency);
-        setToCurrency(fromCurrency);
-    };
-
-    return (
-        <div className="bg-white p-6 rounded-xl shadow-2xl max-w-lg mx-auto">
-            <h2 className="text-3xl font-bold mb-6 text-indigo-700">即時匯率計算機</h2>
-
-            <div className="space-y-4">
-                {/* 輸入金額 */}
-                <div className="flex items-center space-x-2">
-                    <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                        className="flex-1 p-4 text-3xl font-bold border-2 border-indigo-300 rounded-xl focus:border-indigo-500 focus:ring-0 text-right"
-                    />
-                    <select
-                        value={fromCurrency}
-                        onChange={(e) => setFromCurrency(e.target.value)}
-                        className="p-4 border rounded-xl bg-gray-100 text-lg appearance-none cursor-pointer"
-                    >
-                        {Object.keys(currencies).map(c => (
-                            <option key={c} value={c}>{c}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* 轉換按鈕 */}
-                <div className="flex justify-center">
-                    <button
-                        onClick={handleSwap}
-                        className="p-3 bg-indigo-100 text-indigo-600 rounded-full hover:bg-indigo-200 transition shadow-md"
-                        title="切換幣別"
-                    >
-                        <Repeat className="w-6 h-6" />
-                    </button>
-                </div>
-
-                {/* 顯示結果 */}
-                <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-200 shadow-inner">
-                    <div className="text-sm font-medium text-indigo-700 mb-1">轉換結果</div>
-                    <div className="flex items-center justify-between">
-                        <span className="text-4xl font-extrabold text-indigo-900">
-                            {loading ? '計算中...' : result.toFixed(2).toLocaleString()}
-                        </span>
-                        <span className="text-2xl font-bold text-indigo-700">
-                            {toCurrency}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* 匯率資訊 */}
-            <div className="mt-4 text-center text-sm text-gray-500">
-                <p>
-                    參考匯率 (1 {fromCurrency} = {displayRate} {toCurrency}):
-                    <span className="font-semibold text-gray-700 ml-1">
-                        {displayRate}
-                    </span>
-                </p>
-                <p className="text-xs italic mt-1 text-red-500">
-                    *基於 2024/11/27 參考匯率 **1 TWD = 4.99 JPY**。請替換為真實 API 以獲取即時數據。
-                </p>
-            </div>
-        </div>
-    );
-};
-
-export default App;
+    </script>
+</body>
+</html>
