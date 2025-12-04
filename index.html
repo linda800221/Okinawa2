@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>沖繩旅人 Okinawa Trip</title>
+    <title>沖繩旅人 2026</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <script>
         tailwind.config = {
@@ -18,9 +17,10 @@
                         'jp-bg': '#F9F8F4',       /* 極簡米白背景 */
                         'jp-card': '#FFFFFF',     /* 卡片白 */
                         'jp-primary': '#E3D7A3',  /* 淡黃/亞麻色主色 */
-                        'jp-text': '#595959',     /* 深灰文字 (比純黑柔和) */
-                        'jp-accent': '#D4C485',   /* 深一點的黃色強調 */
-                        'jp-soft-gray': '#F2F2F2'
+                        'jp-text': '#595959',     /* 深灰文字 */
+                        'jp-accent': '#C9B874',   /* 深一點的黃色強調 */
+                        'jp-soft-gray': '#F2F2F2',
+                        'jp-dark-gray': '#4A4A4A'
                     },
                     fontFamily: {
                         sans: ['"Noto Sans TC"', 'sans-serif'],
@@ -31,28 +31,25 @@
     </script>
 
     <style>
-        /* 隱藏 Scrollbar 但保留功能 */
-        .hide-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .hide-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-        /* 地圖高度 */
-        #map { height: 100%; width: 100%; z-index: 0; }
+        /* 隱藏 Scrollbar */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* App 容器模擬 */
         body { background-color: #eee; }
         .app-container {
-            max-width: 480px; /* 手機寬度模擬 */
+            max-width: 480px; 
             margin: 0 auto;
             background-color: #F9F8F4;
             height: 100vh;
             display: flex;
             flex-direction: column;
             position: relative;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+        }
+        
+        /* 計算機按鈕樣式 */
+        .calc-btn {
+            @apply rounded-xl text-xl font-bold transition-all active:scale-95 shadow-sm flex items-center justify-center h-14;
         }
     </style>
 </head>
@@ -62,146 +59,196 @@
 
     <header class="bg-jp-bg pt-6 pb-2 px-4 shadow-sm z-20 shrink-0">
         <div class="flex justify-between items-center mb-4">
-            <h1 class="text-xl font-bold tracking-widest text-gray-700">OKINAWA <span class="text-xs font-normal">沖繩旅</span></h1>
-            <div class="text-xs bg-jp-primary text-white px-2 py-1 rounded-full">
+            <div>
+                <h1 class="text-xl font-bold tracking-widest text-jp-dark-gray">OKINAWA <span class="text-xs font-normal">2026</span></h1>
+                <p class="text-xs text-gray-400">4/6 - 4/11</p>
+            </div>
+            <div class="text-xs bg-jp-primary text-white px-3 py-1 rounded-full shadow-sm">
                 匯率: {{ exchangeRate }}
             </div>
         </div>
 
-        <div class="flex space-x-3 overflow-x-auto hide-scrollbar pb-2">
+        <div class="flex space-x-3 overflow-x-auto hide-scrollbar pb-2 px-1">
             <button 
-                v-for="(day, index) in tripDays" 
+                v-for="(day, index) in tripDates" 
                 :key="index"
                 @click="selectDay(index)"
-                :class="['flex-shrink-0 w-14 h-16 rounded-xl flex flex-col items-center justify-center transition-all duration-300 border', 
+                :class="['flex-shrink-0 w-16 h-18 py-2 rounded-xl flex flex-col items-center justify-center transition-all duration-300 border', 
                 currentDayIndex === index ? 'bg-jp-primary text-white border-jp-primary shadow-md transform scale-105' : 'bg-white border-gray-100 text-gray-400']"
             >
-                <span class="text-xs font-light">Day</span>
-                <span class="text-lg font-bold">{{ index + 1 }}</span>
+                <span class="text-xs opacity-80">{{ day.date }}</span>
+                <span class="text-lg font-bold">Day {{ index + 1 }}</span>
+                <span class="text-xs font-light">({{ day.wd }})</span>
             </button>
         </div>
     </header>
 
-    <main class="flex-1 overflow-y-auto p-4 hide-scrollbar relative bg-jp-bg">
+    <main class="flex-1 overflow-y-auto p-4 hide-scrollbar relative bg-jp-bg pb-24">
         
-        <div v-if="currentTab === 'schedule'" class="space-y-4 pb-20">
+        <div v-if="currentTab === 'schedule'" class="space-y-4 animate-fade-in">
             <div class="flex justify-between items-end mb-2">
-                <h2 class="text-lg font-bold text-gray-600">本日行程</h2>
-                <button @click="openEditModal()" class="text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg shadow hover:bg-gray-800">
+                <h2 class="text-lg font-bold text-gray-600">Day {{ currentDayIndex + 1 }} 行程</h2>
+                <button @click="openEditModal()" class="text-xs bg-jp-dark-gray text-white px-3 py-1.5 rounded-lg shadow hover:opacity-90">
                     <i class="fas fa-plus mr-1"></i>新增
                 </button>
             </div>
 
             <div v-if="currentItinerary.length === 0" class="text-center py-10 text-gray-400 font-light">
-                <i class="fas fa-coffee text-3xl mb-3 text-jp-primary opacity-50"></i>
-                <p>今天還沒有安排行程喔</p>
+                <p>今天沒有行程，放鬆一下吧</p>
             </div>
 
             <div v-for="(item, idx) in currentItinerary" :key="item.id" class="bg-jp-card p-4 rounded-2xl shadow-sm border border-gray-50 relative group">
-                <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-100 -z-10 hidden"></div>
-
                 <div class="flex justify-between items-start">
-                    <div class="flex items-center gap-3">
-                        <span class="text-lg font-bold text-jp-accent font-mono">{{ item.time }}</span>
+                    <div class="flex items-start gap-3">
+                        <span class="text-lg font-bold text-jp-accent font-mono mt-0.5">{{ item.time }}</span>
                         <div>
-                            <h3 class="font-bold text-gray-700">{{ item.location }}</h3>
-                            <div v-if="item.weather" class="text-xs text-blue-400 mt-1 flex items-center bg-blue-50 px-2 py-0.5 rounded w-fit">
-                                <i class="fas fa-cloud-sun mr-1"></i> {{ item.weather }}
-                            </div>
-                            <div v-else class="text-xs text-gray-300 mt-1 flex items-center">
-                                <i class="fas fa-spinner fa-spin mr-1"></i> 載入天氣中...
+                            <h3 class="font-bold text-gray-700 text-lg">{{ item.location }}</h3>
+                            <div class="text-xs text-gray-400 mt-1 flex items-center">
+                                <i :class="getWeatherIcon(item.weather)" class="mr-1"></i> {{ item.weather }}
                             </div>
                         </div>
                     </div>
-                    <div class="flex gap-2">
-                         <button @click="openGoogleMap(item.location)" class="text-gray-300 hover:text-blue-500">
+                    <div class="flex gap-3 mt-1">
+                        <button @click="openMapLink(item)" class="text-blue-400 hover:text-blue-600 bg-blue-50 w-8 h-8 rounded-full flex items-center justify-center">
                             <i class="fas fa-location-arrow"></i>
                         </button>
-                        <button @click="editItem(idx)" class="text-gray-300 hover:text-jp-primary">
+                        <button @click="editItem(idx)" class="text-gray-300 hover:text-jp-primary pt-1">
                             <i class="fas fa-pen"></i>
                         </button>
-                        <button @click="deleteItem(idx)" class="text-gray-300 hover:text-red-400">
+                        <button @click="deleteItem(idx)" class="text-gray-300 hover:text-red-400 pt-1">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
                 </div>
                 
-                <div v-if="item.note" class="mt-3 text-sm text-gray-500 bg-jp-soft-gray p-2 rounded-lg ml-10">
-                    <i class="fas fa-sticky-note mr-1 text-xs opacity-50"></i> {{ item.note }}
+                <div v-if="item.note" class="mt-3 text-sm text-gray-600 bg-jp-soft-gray p-2.5 rounded-lg ml-0 border-l-4 border-jp-primary">
+                    {{ item.note }}
                 </div>
             </div>
         </div>
 
-        <div v-if="currentTab === 'money'" class="space-y-4 pb-20">
-            <div class="bg-jp-card p-5 rounded-2xl shadow-sm border border-jp-primary/20">
+        <div v-if="currentTab === 'money'" class="space-y-4 animate-fade-in">
+            
+            <div class="bg-jp-card p-5 rounded-2xl shadow-sm border border-jp-primary/20 relative overflow-hidden">
+                <div class="absolute right-0 top-0 w-20 h-20 bg-jp-primary/10 rounded-bl-full -mr-4 -mt-4"></div>
                 <h3 class="text-sm text-gray-400 mb-1">今日總支出 (TWD)</h3>
-                <p class="text-3xl font-bold text-gray-700">$ {{ formatNumber(todayTotalTWD) }}</p>
+                <p class="text-3xl font-bold text-jp-dark-gray">$ {{ formatNumber(todayTotalTWD) }}</p>
                 <div class="mt-2 text-xs text-gray-400">
-                    約 {{ formatNumber(todayTotalJPY) }} JPY (匯率: <input type="number" step="0.001" v-model="exchangeRate" class="w-16 bg-transparent border-b border-gray-300 text-center focus:outline-none">)
+                    約 {{ formatNumber(todayTotalJPY) }} JPY
                 </div>
             </div>
 
-            <div class="flex gap-2 bg-white p-2 rounded-xl shadow-sm">
-                <input v-model="newExpense.item" type="text" placeholder="項目" class="flex-1 bg-transparent px-2 outline-none text-sm">
-                <input v-model="newExpense.amount" type="number" placeholder="日幣" class="w-20 bg-transparent px-2 outline-none text-sm border-l">
-                <button @click="addExpense" class="bg-jp-primary text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-sm">
+            <div class="bg-white rounded-2xl shadow-sm p-4">
+                <div class="flex justify-between items-center mb-2" @click="showCalculator = !showCalculator">
+                    <span class="text-sm font-bold text-gray-500"><i class="fas fa-calculator mr-2"></i>匯率計算機</span>
+                    <i class="fas" :class="showCalculator ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                </div>
+                
+                <div v-if="showCalculator">
+                    <div class="bg-gray-100 rounded-xl p-3 text-right mb-3 h-16 flex flex-col justify-center">
+                        <div class="text-xs text-gray-400">JPY</div>
+                        <div class="text-2xl font-mono font-bold text-gray-700">{{ calcDisplay || '0' }}</div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button @click="calcAppend('7')" class="calc-btn bg-gray-50 text-gray-600">7</button>
+                        <button @click="calcAppend('8')" class="calc-btn bg-gray-50 text-gray-600">8</button>
+                        <button @click="calcAppend('9')" class="calc-btn bg-gray-50 text-gray-600">9</button>
+                        <button @click="calcClear()" class="calc-btn bg-red-50 text-red-400">C</button>
+                        
+                        <button @click="calcAppend('4')" class="calc-btn bg-gray-50 text-gray-600">4</button>
+                        <button @click="calcAppend('5')" class="calc-btn bg-gray-50 text-gray-600">5</button>
+                        <button @click="calcAppend('6')" class="calc-btn bg-gray-50 text-gray-600">6</button>
+                        <button @click="calcOp('/')" class="calc-btn bg-gray-100 text-jp-primary"><i class="fas fa-divide"></i></button>
+
+                        <button @click="calcAppend('1')" class="calc-btn bg-gray-50 text-gray-600">1</button>
+                        <button @click="calcAppend('2')" class="calc-btn bg-gray-50 text-gray-600">2</button>
+                        <button @click="calcAppend('3')" class="calc-btn bg-gray-50 text-gray-600">3</button>
+                        <button @click="calcOp('*')" class="calc-btn bg-gray-100 text-jp-primary"><i class="fas fa-times"></i></button>
+
+                        <button @click="calcAppend('0')" class="calc-btn bg-gray-50 text-gray-600 col-span-2">0</button>
+                        <button @click="calcAppend('.')" class="calc-btn bg-gray-50 text-gray-600">.</button>
+                        <button @click="calcResult()" class="calc-btn bg-jp-primary text-white shadow-lg shadow-jp-primary/30">=</button>
+                    </div>
+                    <div class="mt-3 text-center p-2 bg-blue-50 rounded-lg text-blue-600 text-sm font-bold">
+                        ≈ {{ formatNumber(Math.round((Number(calcDisplay) || 0) * exchangeRate)) }} TWD
+                    </div>
+                    <button @click="fillExpense" class="w-full mt-2 py-2 text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg hover:bg-gray-50">
+                        填入下方記帳金額
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-2 bg-white p-3 rounded-xl shadow-sm items-center">
+                <input v-model="newExpense.item" type="text" placeholder="消費項目" class="flex-1 bg-gray-50 p-2 rounded-lg outline-none text-sm focus:ring-1 ring-jp-primary">
+                <input v-model="newExpense.amount" type="number" placeholder="日幣" class="w-20 bg-gray-50 p-2 rounded-lg outline-none text-sm text-center focus:ring-1 ring-jp-primary">
+                <button @click="addExpense" class="bg-jp-dark-gray text-white w-10 h-9 rounded-lg flex items-center justify-center shadow-sm">
                     <i class="fas fa-plus"></i>
                 </button>
             </div>
 
             <div class="space-y-2">
-                <div v-for="(exp, idx) in expenses" :key="idx" class="flex justify-between items-center p-3 bg-white rounded-xl border border-gray-50">
+                <div v-for="(exp, idx) in expenses" :key="idx" class="flex justify-between items-center p-3 bg-white rounded-xl border-l-4 border-gray-200 hover:border-jp-primary transition-colors">
                     <span class="text-gray-600">{{ exp.item }}</span>
                     <div class="text-right">
-                        <div class="text-sm font-bold">¥ {{ formatNumber(exp.amount) }}</div>
-                        <div class="text-xs text-gray-400">≈ NT$ {{ formatNumber(Math.round(exp.amount * exchangeRate)) }}</div>
+                        <div class="text-sm font-bold text-gray-700">¥ {{ formatNumber(exp.amount) }}</div>
+                        <div class="text-xs text-gray-400">NT$ {{ formatNumber(Math.round(exp.amount * exchangeRate)) }}</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div v-show="currentTab === 'map'" class="absolute inset-0 z-0 bg-gray-200">
-            <div id="map"></div>
-            <div class="absolute bottom-24 right-4 z-[999]">
-                 <button @click="locateUser" class="bg-white p-3 rounded-full shadow-lg text-blue-500">
-                    <i class="fas fa-crosshairs"></i>
-                </button>
+        <div v-if="currentTab === 'info'" class="space-y-4 animate-fade-in">
+            
+            <div class="bg-gradient-to-br from-blue-400 to-blue-500 text-white p-4 rounded-2xl shadow-lg shadow-blue-200">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold"><i class="fas fa-cloud-sun-rain mr-2"></i>沖繩天氣預報</h3>
+                    <span class="text-xs bg-white/20 px-2 py-0.5 rounded">2026/4/6 - 4/11</span>
+                </div>
+                <div class="flex space-x-4 overflow-x-auto hide-scrollbar pb-2">
+                    <div v-for="(w, i) in weatherForecast" :key="i" class="flex-shrink-0 flex flex-col items-center w-14">
+                        <span class="text-xs opacity-80">{{ w.date }}</span>
+                        <i :class="w.icon" class="text-2xl my-2 text-yellow-300 drop-shadow-md"></i>
+                        <span class="text-sm font-bold">{{ w.temp }}°</span>
+                    </div>
+                </div>
             </div>
-            <div class="absolute top-4 left-4 right-4 z-[999] bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-md text-xs">
-                <p class="font-bold text-gray-700">今日路徑</p>
-                <p class="text-gray-500">已釘選今日 {{ currentItinerary.length }} 個景點</p>
-            </div>
-        </div>
 
-        <div v-if="currentTab === 'info'" class="space-y-4 pb-20">
-            <div class="bg-white rounded-2xl p-4 shadow-sm">
-                <h3 class="font-bold text-pink-400 mb-3"><i class="fas fa-baby-carriage mr-2"></i>沖繩育嬰熱點</h3>
-                <ul class="space-y-2 text-sm text-gray-600">
-                    <li class="flex justify-between border-b border-gray-100 pb-2">
-                        <span>AEON Mall Rycom (來客夢)</span>
-                        <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded">五星級</span>
+            <div class="bg-white rounded-2xl p-5 shadow-sm">
+                <h3 class="font-bold text-pink-400 mb-3 text-sm tracking-wide border-b border-pink-100 pb-2">
+                    <i class="fas fa-baby-carriage mr-2"></i>育嬰與親子熱點
+                </h3>
+                <ul class="space-y-3 text-sm text-gray-600">
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">AEON Mall Rycom (來客夢)</span>
+                        <span class="text-xs text-gray-400">五星級育嬰室，有熱水、微波爐、尿布販賣機。</span>
                     </li>
-                    <li class="flex justify-between border-b border-gray-100 pb-2">
-                        <span>Ashibinaa Outlet</span>
-                        <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">基本</span>
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">美麗海水族館</span>
+                        <span class="text-xs text-gray-400">全館無障礙，各樓層皆有哺乳室，可借推車。</span>
                     </li>
-                    <li class="flex justify-between border-b border-gray-100 pb-2">
-                        <span>美國村 Vessel Hotel</span>
-                        <span class="text-xs bg-blue-100 text-blue-500 px-2 py-0.5 rounded">友善</span>
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">浦添大公園</span>
+                        <span class="text-xs text-gray-400">C區適合幼兒，有遮陽棚，記得帶防蚊液。</span>
                     </li>
                 </ul>
             </div>
 
-            <div class="bg-white rounded-2xl p-4 shadow-sm">
-                <h3 class="font-bold text-blue-400 mb-3"><i class="fas fa-umbrella-beach mr-2"></i>雨備/備用景點</h3>
-                <ul class="space-y-2 text-sm text-gray-600">
-                    <li class="border-b border-gray-100 pb-2">
-                        <div class="font-bold">DMM Kariyushi 水族館</div>
-                        <div class="text-xs text-gray-400">離機場近，適合最後一天或雨天</div>
+            <div class="bg-white rounded-2xl p-5 shadow-sm">
+                <h3 class="font-bold text-jp-primary mb-3 text-sm tracking-wide border-b border-gray-100 pb-2">
+                    <i class="fas fa-umbrella mr-2"></i>雨備 / 備用方案
+                </h3>
+                <ul class="space-y-3 text-sm text-gray-600">
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">DMM Kariyushi 水族館</span>
+                        <span class="text-xs text-gray-400">位於豐見城，離機場近，全室內聲光效果佳。</span>
                     </li>
-                    <li class="border-b border-gray-100 pb-2">
-                        <div class="font-bold">TeamLab Future Park</div>
-                        <div class="text-xs text-gray-400">位於 DFS 附近，室內溜小孩首選</div>
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">TeamLab Future Park</span>
+                        <span class="text-xs text-gray-400">DFS 免稅店旁，小孩放電首選，需預約。</span>
+                    </li>
+                    <li class="flex flex-col">
+                        <span class="font-bold text-gray-700">Round 1 Stadium (宜野灣)</span>
+                        <span class="text-xs text-gray-400">室內大型遊樂場，有夾娃娃機、保齡球、兒童遊戲區。</span>
                     </li>
                 </ul>
             </div>
@@ -209,139 +256,166 @@
 
     </main>
 
-    <nav class="bg-white border-t border-gray-100 flex justify-around items-center h-20 pb-2 shrink-0 shadow-[0_-5px_10px_rgba(0,0,0,0.02)] z-30">
-        <button @click="switchTab('schedule')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'schedule' ? 'text-jp-primary' : 'text-gray-300']">
-            <i class="fas fa-calendar-alt text-xl mb-1"></i>
-            <span class="text-[10px]">行程</span>
+    <nav class="bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around items-center h-20 pb-4 shrink-0 shadow-[0_-5px_20px_rgba(0,0,0,0.02)] z-30 fixed bottom-0 w-full max-w-[480px]">
+        <button @click="switchTab('schedule')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'schedule' ? 'text-jp-dark-gray' : 'text-gray-300']">
+            <i class="fas fa-calendar-alt text-xl mb-1 transition-transform" :class="currentTab === 'schedule' ? 'scale-110' : ''"></i>
+            <span class="text-[10px] font-medium">行程</span>
         </button>
-        <button @click="switchTab('money')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'money' ? 'text-jp-primary' : 'text-gray-300']">
-            <i class="fas fa-yen-sign text-xl mb-1"></i>
-            <span class="text-[10px]">記帳</span>
+        <button @click="switchTab('money')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'money' ? 'text-jp-dark-gray' : 'text-gray-300']">
+            <i class="fas fa-yen-sign text-xl mb-1 transition-transform" :class="currentTab === 'money' ? 'scale-110' : ''"></i>
+            <span class="text-[10px] font-medium">記帳</span>
         </button>
-        <button @click="switchTab('map')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'map' ? 'text-jp-primary' : 'text-gray-300']">
-            <i class="fas fa-map-marked-alt text-xl mb-1"></i>
-            <span class="text-[10px]">地圖</span>
-        </button>
-        <button @click="switchTab('info')" :class="['flex flex-col items-center justify-center w-full h-full', currentTab === 'info' ? 'text-jp-primary' : 'text-gray-300']">
-            <i class="fas fa-info-circle text-xl mb-1"></i>
-            <span class="text-[10px]">資訊</span>
+        <button @click="switchTab('info')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'info' ? 'text-jp-dark-gray' : 'text-gray-300']">
+            <i class="fas fa-info-circle text-xl mb-1 transition-transform" :class="currentTab === 'info' ? 'scale-110' : ''"></i>
+            <span class="text-[10px] font-medium">資訊</span>
         </button>
     </nav>
 
-    <div v-if="showModal" class="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center">
-        <div class="bg-white w-full sm:w-10/12 rounded-t-2xl sm:rounded-2xl p-6 animate-slide-up">
-            <h3 class="text-lg font-bold mb-4 text-center">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
+    <div v-if="showModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full sm:w-10/12 rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl transform transition-transform duration-300 max-w-[480px]">
+            <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
             
-            <div class="space-y-3">
-                <div>
-                    <label class="text-xs text-gray-400">時間</label>
-                    <input v-model="form.time" type="time" class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary">
+            <h3 class="text-lg font-bold mb-4 text-center text-gray-700">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
+            
+            <div class="space-y-4">
+                <div class="flex gap-4">
+                    <div class="w-1/3">
+                        <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Time</label>
+                        <input v-model="form.time" type="time" class="w-full bg-gray-50 p-3 rounded-xl outline-none focus:ring-2 ring-jp-primary/50 text-center">
+                    </div>
+                    <div class="w-2/3">
+                        <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Location</label>
+                        <input v-model="form.location" type="text" placeholder="輸入地點..." class="w-full bg-gray-50 p-3 rounded-xl outline-none focus:ring-2 ring-jp-primary/50">
+                    </div>
                 </div>
+                
                 <div>
-                    <label class="text-xs text-gray-400">地點 (用於地圖搜尋)</label>
-                    <input v-model="form.location" type="text" placeholder="例如: 美麗海水族館" class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary">
+                    <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Google Maps Link (Optional)</label>
+                    <div class="relative">
+                        <i class="fas fa-link absolute left-3 top-3.5 text-gray-300"></i>
+                        <input v-model="form.mapLink" type="text" placeholder="貼上 Google Maps 網址" class="w-full bg-gray-50 p-3 pl-9 rounded-xl outline-none focus:ring-2 ring-jp-primary/50 text-xs">
+                    </div>
                 </div>
+
                 <div>
-                    <label class="text-xs text-gray-400">備註</label>
-                    <textarea v-model="form.note" rows="2" placeholder="門票資訊、必吃清單..." class="w-full bg-gray-50 p-3 rounded-lg outline-none focus:ring-1 ring-jp-primary"></textarea>
+                    <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Notes</label>
+                    <textarea v-model="form.note" rows="2" placeholder="備註、必吃、訂位資訊..." class="w-full bg-gray-50 p-3 rounded-xl outline-none focus:ring-2 ring-jp-primary/50 resize-none"></textarea>
                 </div>
             </div>
 
-            <div class="flex gap-3 mt-6">
-                <button @click="closeModal" class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-500 font-bold">取消</button>
-                <button @click="saveEvent" class="flex-1 py-3 rounded-xl bg-jp-primary text-white font-bold shadow-lg shadow-jp-primary/30">儲存</button>
+            <div class="flex gap-3 mt-8">
+                <button @click="closeModal" class="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-500 font-bold text-sm">取消</button>
+                <button @click="saveEvent" class="flex-1 py-3.5 rounded-xl bg-jp-dark-gray text-white font-bold shadow-lg shadow-gray-400/30 text-sm">
+                    {{ isEditing ? '儲存變更' : '新增行程' }}
+                </button>
             </div>
         </div>
     </div>
 
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-    const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
 
     createApp({
         setup() {
-            // --- 狀態 ---
             const currentTab = ref('schedule');
             const currentDayIndex = ref(0);
-            const tripDays = ref([1, 2, 3, 4, 5]); // 5天行程
-            const exchangeRate = ref(0.215); // 預設匯率
+            const exchangeRate = ref(0.215); 
             
-            // 行程資料 (假資料結構)
+            // 1. 日期設定 (2026/4/6 Mon Start)
+            const tripDates = [
+                { date: '4/6', wd: '一' },
+                { date: '4/7', wd: '二' },
+                { date: '4/8', wd: '三' },
+                { date: '4/9', wd: '四' },
+                { date: '4/10', wd: '五' },
+                { date: '4/11', wd: '六' }
+            ];
+
+            // 2. 預排行程資料 (MapLink 為空時會搜尋地點)
             const allItineraries = ref({
-                0: [
-                    { id: 1, time: '10:00', location: '那霸機場', note: '取車、買飯糰', weather: null },
-                    { id: 2, time: '12:30', location: '系滿魚市場', note: '吃海鮮', weather: null },
-                    { id: 3, time: '15:00', location: '波上宮', note: '看海邊神社', weather: null }
+                0: [ // Day 1
+                    { id: 101, time: '13:00', location: '抵達沖繩那霸機場', note: '取車、買豬肉蛋飯糰', mapLink: '', weather: '晴時多雲' },
+                    { id: 102, time: '15:00', location: '民宿 Check-in', note: '放置行李，休息一下', mapLink: '', weather: '晴時多雲' },
+                    { id: 103, time: '17:30', location: '美國村散步', note: '日落海灘看夕陽', mapLink: '', weather: '多雲' },
+                    { id: 104, time: '19:00', location: '美國村晚餐', note: '迴轉壽司 or 塔可飯', mapLink: '', weather: '多雲' }
                 ],
-                1: [
-                    { id: 4, time: '09:00', location: '萬座毛', note: '看象鼻岩', weather: null },
-                    { id: 5, time: '11:30', location: '百年古家 大家', note: '預約午餐', weather: null }
+                1: [ // Day 2
+                    { id: 201, time: '09:00', location: '萬座毛', note: '象鼻岩拍照', mapLink: '', weather: '晴朗' },
+                    { id: 202, time: '10:30', location: '備瀨福木林道', note: '騎腳踏車，很舒服', mapLink: '', weather: '晴朗' },
+                    { id: 203, time: '12:00', location: '海人料理 海邦丸', note: '午餐：海鮮定食', mapLink: '', weather: '晴朗' },
+                    { id: 204, time: '14:00', location: '美麗海水族館', note: '看鯨鯊餵食秀 (15:00/17:00)', mapLink: '', weather: '晴朗' },
+                    { id: 205, time: '17:00', location: '古宇利大橋', note: '開車兜風，蝦蝦飯', mapLink: '', weather: '多雲' },
+                    { id: 206, time: '19:00', location: '阿古豬晚餐', note: '火鍋或燒肉 (需訂位)', mapLink: '', weather: '多雲' },
+                    { id: 207, time: '21:00', location: '返回美國村住宿', note: '', mapLink: '', weather: '多雲' }
                 ],
-                2: [], 3: [], 4: []
+                2: [ // Day 3
+                    { id: 301, time: '09:30', location: '玉泉洞 / Okinawa World', note: '鐘乳石洞、王國村', mapLink: '', weather: '短暫雨' },
+                    { id: 302, time: '12:30', location: '園區內午餐', note: '沖繩蕎麥麵', mapLink: '', weather: '陰天' },
+                    { id: 303, time: '18:00', location: '晚餐: 火鍋/燒肉', note: '補償前一天沒吃到的', mapLink: '', weather: '陰天' }
+                ],
+                3: [ // Day 4
+                    { id: 401, time: '10:00', location: '普天滿宮', note: '參觀鐘乳石地底神宮', mapLink: '', weather: '多雲時晴' },
+                    { id: 402, time: '12:00', location: '港川外人住宅區', note: '找午餐，買可麗露', mapLink: '', weather: '多雲時晴' },
+                    { id: 403, time: '15:00', location: '牧志公設市場', note: '吃點心、逛街', mapLink: '', weather: '晴朗' },
+                    { id: 404, time: '18:00', location: '國際通晚餐', note: '鄉村料理、聽三線琴表演', mapLink: '', weather: '晴朗' }
+                ],
+                4: [ // Day 5
+                    { id: 501, time: '11:00', location: 'AEON Mall Rycom', note: '整天購物行程！午餐在美食街解決', mapLink: '', weather: '雨天' },
+                    { id: 502, time: '18:00', location: '晚餐', note: '超市熟食或 Mall 內餐廳', mapLink: '', weather: '雨天' }
+                ],
+                5: [ // Day 6
+                    { id: 601, time: '10:00', location: '波上宮', note: '最後參拜，買御守', mapLink: '', weather: '晴朗' },
+                    { id: 602, time: '11:30', location: '前往機場', note: '還車、逛免稅店', mapLink: '', weather: '晴朗' },
+                    { id: 603, time: '15:50', location: '飛機起飛', note: '回家囉', mapLink: '', weather: '晴朗' }
+                ]
             });
 
-            // 記帳資料
+            // 3. 記帳與計算機
             const expenses = ref([
-                { item: 'Lawson 早餐', amount: 850 },
-                { item: '租車費用', amount: 15000 }
+                { item: 'Lawson 宵夜', amount: 1200 },
+                { item: '租車頭期款', amount: 5000 }
             ]);
             const newExpense = ref({ item: '', amount: '' });
+            const showCalculator = ref(true);
+            const calcDisplay = ref('');
 
-            // Modal 相關
+            // 4. Modal 狀態
             const showModal = ref(false);
             const isEditing = ref(false);
             const editingId = ref(null);
-            const form = ref({ time: '', location: '', note: '' });
+            const form = ref({ time: '', location: '', note: '', mapLink: '' });
 
-            // 地圖相關
-            let mapInstance = null;
-            let markers = [];
-            let userMarker = null;
+            // 5. 天氣預報 (模擬)
+            const weatherForecast = [
+                { date: '4/6 (一)', icon: 'fas fa-cloud-sun', temp: '24', desc: '晴時多雲' },
+                { date: '4/7 (二)', icon: 'fas fa-sun', temp: '26', desc: '晴朗' },
+                { date: '4/8 (三)', icon: 'fas fa-cloud-showers-heavy', temp: '22', desc: '短暫雨' },
+                { date: '4/9 (四)', icon: 'fas fa-cloud-sun', temp: '25', desc: '多雲時晴' },
+                { date: '4/10 (五)', icon: 'fas fa-umbrella', temp: '21', desc: '雨天' },
+                { date: '4/11 (六)', icon: 'fas fa-sun', temp: '27', desc: '晴朗' },
+            ];
 
-            // --- Computed ---
+            // Computed
             const currentItinerary = computed(() => {
-                return allItineraries.value[currentDayIndex.value] || [];
+                let list = allItineraries.value[currentDayIndex.value] || [];
+                return list.sort((a, b) => a.time.localeCompare(b.time));
             });
+            const todayTotalJPY = computed(() => expenses.value.reduce((sum, item) => sum + Number(item.amount), 0));
+            const todayTotalTWD = computed(() => Math.round(todayTotalJPY.value * exchangeRate.value));
 
-            const todayTotalJPY = computed(() => {
-                return expenses.value.reduce((sum, item) => sum + Number(item.amount), 0);
-            });
+            // Methods
+            const formatNumber = (num) => num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            const switchTab = (tab) => currentTab.value = tab;
+            const selectDay = (index) => currentDayIndex.value = index;
 
-            const todayTotalTWD = computed(() => {
-                return Math.round(todayTotalJPY.value * exchangeRate.value);
-            });
-
-            // --- Methods ---
-            const formatNumber = (num) => {
-                return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-            };
-
-            const switchTab = (tab) => {
-                currentTab.value = tab;
-                if (tab === 'map') {
-                    // 地圖需要一些時間等待 DOM 顯示
-                    nextTick(() => {
-                        initMap();
-                        updateMapPins();
-                    });
-                }
-            };
-
-            const selectDay = (index) => {
-                currentDayIndex.value = index;
-                fetchWeatherForDay(); // 切換日期時更新天氣
-            };
-
-            // CRUD - 行程
+            // 行程 CRUD
             const openEditModal = () => {
                 isEditing.value = false;
-                form.value = { time: '09:00', location: '', note: '' };
+                form.value = { time: '12:00', location: '', note: '', mapLink: '' };
                 showModal.value = true;
             };
-
             const editItem = (index) => {
                 const item = currentItinerary.value[index];
                 form.value = { ...item };
@@ -349,37 +423,41 @@
                 editingId.value = index;
                 showModal.value = true;
             };
-
             const saveEvent = () => {
                 if (!form.value.location) return alert('請輸入地點');
+                // 簡易天氣對應
+                const dayWeather = weatherForecast[currentDayIndex.value].desc;
                 
-                // 簡單抓取天氣 (模擬)
-                const mockWeather = getRandomWeather();
-
                 if (isEditing.value) {
-                    allItineraries.value[currentDayIndex.value][editingId.value] = {
-                        ...form.value,
-                        weather: mockWeather
-                    };
+                    allItineraries.value[currentDayIndex.value][editingId.value] = { ...form.value, weather: dayWeather };
                 } else {
                     allItineraries.value[currentDayIndex.value].push({
                         id: Date.now(),
                         ...form.value,
-                        weather: mockWeather
+                        weather: dayWeather
                     });
-                    // 排序
-                    allItineraries.value[currentDayIndex.value].sort((a, b) => a.time.localeCompare(b.time));
                 }
                 closeModal();
             };
-
             const deleteItem = (index) => {
-                if(confirm('確定刪除?')) {
-                    allItineraries.value[currentDayIndex.value].splice(index, 1);
+                if(confirm('確定刪除?')) allItineraries.value[currentDayIndex.value].splice(index, 1);
+            };
+            const closeModal = () => showModal.value = false;
+            
+            // 導航邏輯
+            const openMapLink = (item) => {
+                if (item.mapLink && item.mapLink.trim() !== '') {
+                    window.open(item.mapLink, '_blank');
+                } else {
+                    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location + ' 沖繩')}`, '_blank');
                 }
             };
 
-            const closeModal = () => showModal.value = false;
+            const getWeatherIcon = (weatherStr) => {
+                if(weatherStr.includes('雨')) return 'fas fa-umbrella text-blue-400';
+                if(weatherStr.includes('晴')) return 'fas fa-sun text-orange-400';
+                return 'fas fa-cloud text-gray-400';
+            };
 
             // 記帳
             const addExpense = () => {
@@ -388,116 +466,45 @@
                 newExpense.value = { item: '', amount: '' };
             };
 
-            // 導航
-            const openGoogleMap = (loc) => {
-                window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc + ' 沖繩')}`, '_blank');
+            // 計算機邏輯
+            const calcAppend = (char) => {
+                calcDisplay.value += char;
             };
-
-            // 天氣 (Mock API 呼叫，因為真實 API 需要經緯度與 CORS 處理)
-            // 在真實專案中，你會使用 OpenWeatherMap 或 OpenMeteo
-            const fetchWeatherForDay = () => {
-                currentItinerary.value.forEach(item => {
-                    if(!item.weather) item.weather = getRandomWeather();
-                });
+            const calcClear = () => {
+                calcDisplay.value = '';
             };
-
-            const getRandomWeather = () => {
-                const temp = Math.floor(Math.random() * (30 - 24) + 24); // 24-30度
-                const conditions = ['晴', '多雲', '偶雨'];
-                return `${temp}°C ${conditions[Math.floor(Math.random() * conditions.length)]}`;
+            const calcOp = (op) => {
+                calcDisplay.value += op;
             };
-
-            // --- Map Logic (Leaflet) ---
-            const initMap = () => {
-                if (mapInstance) return; // 已經初始化過
-                
-                // 沖繩中心點
-                mapInstance = L.map('map').setView([26.2124, 127.6809], 10);
-                
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                    attribution: '&copy; OpenStreetMap &copy; CARTO',
-                    subdomains: 'abcd',
-                    maxZoom: 19
-                }).addTo(mapInstance);
+            const calcResult = () => {
+                try {
+                    // 簡單防呆 eval
+                    calcDisplay.value = eval(calcDisplay.value).toString(); 
+                } catch (e) {
+                    calcDisplay.value = 'Error';
+                }
             };
-
-            // 將地名轉為座標 (Geocoding) 
-            // 注意：這裡是模擬座標，因為沒有後端 Geocoding API Key
-            // 實作上會用 Nominatim (OSM) 但它有頻率限制，這裡用亂數偏移模擬分佈在沖繩
-            const updateMapPins = async () => {
-                if (!mapInstance) return;
-
-                // 清除舊 Markers
-                markers.forEach(m => mapInstance.removeLayer(m));
-                markers = [];
-
-                const baseLat = 26.2124;
-                const baseLng = 127.6809;
-
-                currentItinerary.value.forEach((item, index) => {
-                    // 模擬：根據 index 稍微偏移座標，讓它們不要疊在一起
-                    // 真實情況：你需要用 Geocoding API 把 item.location 轉成 lat/lng
-                    const lat = baseLat + (Math.random() - 0.5) * 0.4; 
-                    const lng = baseLng + (Math.random() - 0.5) * 0.2;
-
-                    const marker = L.marker([lat, lng])
-                        .addTo(mapInstance)
-                        .bindPopup(`<b>${item.time}</b><br>${item.location}`);
-                    
-                    markers.push(marker);
-                });
-
-                // 調整視野以包含所有點
-                if (markers.length > 0) {
-                    const group = new L.featureGroup(markers);
-                    mapInstance.fitBounds(group.getBounds().pad(0.2));
+            const fillExpense = () => {
+                // 將計算結果填入金額欄位
+                const val = parseFloat(calcDisplay.value);
+                if(!isNaN(val)) {
+                    newExpense.value.amount = Math.round(val);
+                    showCalculator.value = false; // 自動收合
                 }
             };
 
-            const locateUser = () => {
-                if (!navigator.geolocation) return alert("您的瀏覽器不支援定位");
-                
-                navigator.geolocation.getCurrentPosition(pos => {
-                    const { latitude, longitude } = pos.coords;
-                    
-                    if (userMarker) mapInstance.removeLayer(userMarker);
-                    
-                    // 自定義藍色圓點 Icon
-                    const userIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='background-color:#4285F4;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 0 5px rgba(0,0,0,0.3);'></div>",
-                        iconSize: [12, 12],
-                        iconAnchor: [6, 6]
-                    });
-
-                    userMarker = L.marker([latitude, longitude], {icon: userIcon}).addTo(mapInstance);
-                    mapInstance.setView([latitude, longitude], 13);
-                }, err => {
-                    alert("無法獲取位置: " + err.message);
-                });
-            };
-
-            onMounted(() => {
-                fetchWeatherForDay();
-            });
-
             return {
                 currentTab, switchTab,
-                tripDays, currentDayIndex, selectDay,
-                currentItinerary,
-                showModal, isEditing, form, openEditModal, editItem, saveEvent, deleteItem, closeModal,
+                tripDates, currentDayIndex, selectDay,
+                currentItinerary, allItineraries,
+                showModal, isEditing, form, openEditModal, editItem, saveEvent, deleteItem, closeModal, openMapLink,
                 expenses, newExpense, addExpense, todayTotalJPY, todayTotalTWD, exchangeRate, formatNumber,
-                openGoogleMap, locateUser
+                showCalculator, calcDisplay, calcAppend, calcClear, calcOp, calcResult, fillExpense,
+                weatherForecast, getWeatherIcon
             };
         }
     }).mount('#app');
 </script>
 
-<style>
-    /* 修正地圖圖層順序 */
-    .leaflet-pane { z-index: 0 !important; }
-    .leaflet-control { z-index: 10 !important; }
-    .leaflet-top, .leaflet-bottom { z-index: 10 !important; }
-</style>
 </body>
 </html>
