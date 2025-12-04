@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>沖繩旅人 2026</title>
+    <title>沖繩家族旅行 2026</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -20,6 +20,15 @@
                         'jp-text': '#595959',
                         'jp-dark-gray': '#4A4A4A',
                         'jp-blue': '#4A8095', /* 沖繩海藍 */
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
                     }
                 }
             }
@@ -30,7 +39,7 @@
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        body { background-color: #333; }
+        body { background-color: #222; } /* 外圍深色讓App更突出 */
         .app-container {
             max-width: 480px; 
             margin: 0 auto;
@@ -43,15 +52,14 @@
             overflow: hidden;
         }
 
-        /* 背景圖片：鯨鯊 */
-        .bg-image {
+        /* 全局背景裝飾 (改用更穩定的圖片源) */
+        .bg-pattern {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            /* 使用 Unsplash 美麗海水族館/鯨鯊 圖片 */
-            background-image: url('https://images.unsplash.com/photo-1544551763-46a8723ba3f9?q=80&w=1000&auto=format&fit=crop');
+            background-image: url('https://images.unsplash.com/photo-1544551763-46a8723ba3f9?auto=format&fit=crop&w=600&q=60'); 
             background-size: cover;
             background-position: center;
-            opacity: 0.15; /* 淡化處理以免干擾文字 */
+            opacity: 0.05; /* 極淡背景 */
             z-index: 0;
             pointer-events: none;
         }
@@ -60,7 +68,6 @@
             @apply rounded-xl text-lg font-bold transition-all active:scale-95 shadow-sm flex items-center justify-center h-12 border border-gray-100;
         }
         
-        /* 登機證樣式 */
         .ticket-stub {
             mask-image: radial-gradient(circle at 0 10px, transparent 10px, black 11px), radial-gradient(circle at 100% 10px, transparent 10px, black 11px);
             mask-position: bottom left, bottom right;
@@ -73,15 +80,14 @@
 
 <div id="app" class="app-container text-jp-text">
 
-    <div class="bg-image"></div>
+    <div class="bg-pattern"></div>
 
-    <header class="bg-jp-bg/90 backdrop-blur-md pt-6 pb-2 px-4 shadow-sm z-20 shrink-0 relative">
+    <header v-if="currentTab !== 'info'" class="bg-jp-bg/95 backdrop-blur-md pt-6 pb-2 px-4 shadow-sm z-20 shrink-0 relative transition-all duration-300">
         <div class="flex justify-between items-center mb-4">
             <div class="flex items-center">
                 <h1 class="text-xl font-bold tracking-widest text-jp-dark-gray mr-2">
-                    <span class="text-jp-blue">沖繩</span> OKINAWA <span class="text-xs font-normal hidden sm:inline">2026</span>
+                    <span class="text-jp-blue">OKINAWA</span> <span class="text-sm font-normal">行程表</span>
                 </h1>
-                <p class="text-xs text-gray-400 sm:hidden">4/6 - 4/11</p>
             </div>
             <div class="text-xs bg-jp-primary text-white pl-3 pr-1 py-1 rounded-full shadow-sm flex items-center">
                 匯率: <input type="number" step="0.001" v-model="exchangeRate" @change="saveData" class="w-14 bg-transparent border-b border-white/50 text-center focus:outline-none ml-1 text-white font-bold">
@@ -104,6 +110,89 @@
     </header>
 
     <main class="flex-1 overflow-y-auto p-4 hide-scrollbar relative z-10 pb-24">
+        
+        <div v-show="currentTab === 'info'" class="space-y-5 animate-fade-in pt-2">
+            
+            <div class="relative h-64 rounded-3xl overflow-hidden shadow-xl group">
+                <img src="https://images.unsplash.com/photo-1544551763-46a8723ba3f9?auto=format&fit=crop&w=800&q=80" alt="Okinawa" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col items-center justify-end pb-6 text-white text-center p-4">
+                    <h1 class="text-3xl font-bold tracking-widest mb-1 drop-shadow-lg">OKINAWA</h1>
+                    <p class="text-lg font-medium drop-shadow-md">沖繩家族旅行</p>
+                    <div class="mt-2 text-xs bg-white/20 backdrop-blur-md border border-white/30 px-3 py-1 rounded-full font-mono">
+                        2026/04/06 ~ 2026/04/11
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden relative">
+                <div class="bg-jp-dark-gray text-white p-3 text-sm font-bold flex justify-between items-center">
+                    <span><i class="fas fa-plane-departure mr-2"></i>航班資訊</span>
+                    <span class="text-xs font-normal opacity-80">STARLUX 星宇航空</span>
+                </div>
+                <div class="p-4 border-b border-dashed border-gray-300 relative ticket-stub">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="text-xs text-gray-400">2026/04/06 (一)</div>
+                        <div class="text-xs font-bold text-jp-blue border border-jp-blue px-2 rounded">去程 JX870</div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-800">TPE</div>
+                            <div class="text-xs text-gray-500">台北 T1</div>
+                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">12:00</div>
+                        </div>
+                        <div class="text-gray-300"><i class="fas fa-arrow-right"></i></div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-800">OKA</div>
+                            <div class="text-xs text-gray-500">沖繩 I</div>
+                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">14:40</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="text-xs text-gray-400">2026/04/11 (六)</div>
+                        <div class="text-xs font-bold text-jp-blue border border-jp-blue px-2 rounded">回程 JX871</div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-800">OKA</div>
+                            <div class="text-xs text-gray-500">沖繩 I</div>
+                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">15:50</div>
+                        </div>
+                        <div class="text-gray-300"><i class="fas fa-arrow-right"></i></div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-gray-800">TPE</div>
+                            <div class="text-xs text-gray-500">台北 T1</div>
+                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">16:30</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-4 rounded-2xl shadow-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold"><i class="fas fa-cloud-sun-rain mr-2"></i>天氣預報</h3>
+                </div>
+                <div class="flex space-x-4 overflow-x-auto hide-scrollbar pb-2">
+                    <div v-for="(w, i) in weatherForecast" :key="i" class="flex-shrink-0 flex flex-col items-center w-14">
+                        <span class="text-xs opacity-80">{{ w.date }}</span>
+                        <i :class="w.icon" class="text-2xl my-2 text-yellow-300 drop-shadow-md"></i>
+                        <span class="text-sm font-bold">{{ w.temp }}°</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white/90 rounded-2xl p-5 shadow-sm border border-gray-50 mb-10">
+                <h3 class="font-bold text-pink-400 mb-3 text-sm tracking-wide border-b border-pink-100 pb-2">
+                    <i class="fas fa-baby-carriage mr-2"></i>育嬰與親子熱點
+                </h3>
+                <ul class="space-y-3 text-sm text-gray-600">
+                    <li class="flex flex-col"><span class="font-bold text-gray-700">AEON Mall Rycom</span><span class="text-xs text-gray-400">五星級育嬰室，熱水、尿布販賣機。</span></li>
+                    <li class="flex flex-col"><span class="font-bold text-gray-700">美麗海水族館</span><span class="text-xs text-gray-400">全館無障礙，各樓層皆有哺乳室。</span></li>
+                    <li class="flex flex-col"><span class="font-bold text-gray-700">浦添大公園</span><span class="text-xs text-gray-400">C區適合幼兒，有遮陽棚。</span></li>
+                </ul>
+            </div>
+        </div>
         
         <div v-show="currentTab === 'schedule'" class="space-y-4 animate-fade-in">
             <div class="flex justify-between items-end mb-2">
@@ -229,100 +318,31 @@
             </div>
         </div>
 
-        <div v-show="currentTab === 'info'" class="space-y-4 animate-fade-in">
-            
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden relative">
-                <div class="bg-jp-dark-gray text-white p-3 text-sm font-bold flex justify-between items-center">
-                    <span><i class="fas fa-plane-departure mr-2"></i>航班資訊</span>
-                    <span class="text-xs font-normal opacity-80">STARLUX 星宇航空</span>
-                </div>
-                
-                <div class="p-4 border-b border-dashed border-gray-300 relative ticket-stub">
-                    <div class="flex justify-between items-center mb-2">
-                        <div class="text-xs text-gray-400">2026/04/06 (一)</div>
-                        <div class="text-xs font-bold text-jp-blue border border-jp-blue px-2 rounded">去程 JX870</div>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-gray-800">TPE</div>
-                            <div class="text-xs text-gray-500">台北 T1</div>
-                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">12:00</div>
-                        </div>
-                        <div class="text-gray-300"><i class="fas fa-arrow-right"></i></div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-gray-800">OKA</div>
-                            <div class="text-xs text-gray-500">沖繩 I</div>
-                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">14:40</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="p-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <div class="text-xs text-gray-400">2026/04/11 (六)</div>
-                        <div class="text-xs font-bold text-jp-blue border border-jp-blue px-2 rounded">回程 JX871</div>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-gray-800">OKA</div>
-                            <div class="text-xs text-gray-500">沖繩 I</div>
-                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">15:50</div>
-                        </div>
-                        <div class="text-gray-300"><i class="fas fa-arrow-right"></i></div>
-                        <div class="text-center">
-                            <div class="text-2xl font-bold text-gray-800">TPE</div>
-                            <div class="text-xs text-gray-500">台北 T1</div>
-                            <div class="text-lg font-mono font-bold text-jp-dark-gray mt-1">16:30</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-4 rounded-2xl shadow-lg">
-                <div class="flex justify-between items-center mb-3">
-                    <h3 class="font-bold"><i class="fas fa-cloud-sun-rain mr-2"></i>天氣預報</h3>
-                </div>
-                <div class="flex space-x-4 overflow-x-auto hide-scrollbar pb-2">
-                    <div v-for="(w, i) in weatherForecast" :key="i" class="flex-shrink-0 flex flex-col items-center w-14">
-                        <span class="text-xs opacity-80">{{ w.date }}</span>
-                        <i :class="w.icon" class="text-2xl my-2 text-yellow-300 drop-shadow-md"></i>
-                        <span class="text-sm font-bold">{{ w.temp }}°</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white/90 rounded-2xl p-5 shadow-sm border border-gray-50">
-                <h3 class="font-bold text-pink-400 mb-3 text-sm tracking-wide border-b border-pink-100 pb-2">
-                    <i class="fas fa-baby-carriage mr-2"></i>育嬰與親子熱點
-                </h3>
-                <ul class="space-y-3 text-sm text-gray-600">
-                    <li class="flex flex-col"><span class="font-bold text-gray-700">AEON Mall Rycom</span><span class="text-xs text-gray-400">五星級育嬰室，熱水、尿布販賣機。</span></li>
-                    <li class="flex flex-col"><span class="font-bold text-gray-700">美麗海水族館</span><span class="text-xs text-gray-400">全館無障礙，各樓層皆有哺乳室。</span></li>
-                </ul>
-            </div>
-        </div>
-
     </main>
 
     <nav class="bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around items-center h-20 pb-4 shrink-0 shadow-[0_-5px_20px_rgba(0,0,0,0.03)] z-30 fixed bottom-0 w-full max-w-[480px]">
-        <button @click="switchTab('schedule')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'schedule' ? 'text-jp-blue' : 'text-gray-300']">
-            <i class="fas fa-calendar-alt text-xl mb-1 transition-transform" :class="currentTab === 'schedule' ? 'scale-110' : ''"></i>
-            <span class="text-[10px] font-medium">行程</span>
-        </button>
-        <button @click="switchTab('money')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'money' ? 'text-jp-blue' : 'text-gray-300']">
-            <i class="fas fa-wallet text-xl mb-1 transition-transform" :class="currentTab === 'money' ? 'scale-110' : ''"></i>
-            <span class="text-[10px] font-medium">記帳</span>
-        </button>
+        
         <button @click="switchTab('info')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'info' ? 'text-jp-blue' : 'text-gray-300']">
             <i class="fas fa-plane text-xl mb-1 transition-transform" :class="currentTab === 'info' ? 'scale-110' : ''"></i>
             <span class="text-[10px] font-medium">資訊</span>
         </button>
+
+        <button @click="switchTab('schedule')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'schedule' ? 'text-jp-blue' : 'text-gray-300']">
+            <i class="fas fa-calendar-alt text-xl mb-1 transition-transform" :class="currentTab === 'schedule' ? 'scale-110' : ''"></i>
+            <span class="text-[10px] font-medium">行程</span>
+        </button>
+        
+        <button @click="switchTab('money')" :class="['flex flex-col items-center justify-center w-full h-full pt-2', currentTab === 'money' ? 'text-jp-blue' : 'text-gray-300']">
+            <i class="fas fa-wallet text-xl mb-1 transition-transform" :class="currentTab === 'money' ? 'scale-110' : ''"></i>
+            <span class="text-[10px] font-medium">紀錄</span>
+        </button>
+
     </nav>
 
     <div v-if="showModal" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center">
         <div class="bg-white w-full sm:w-10/12 rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl transform transition-transform duration-300 max-w-[480px]">
             <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
-            <h3 class="text-lg font-bold mb-4 text-center text-gray-700">{{ isEditing ? '編輯' : '新增' }}</h3>
+            <h3 class="text-lg font-bold mb-4 text-center text-gray-700">{{ isEditing ? '編輯行程' : '新增行程' }}</h3>
             <div class="space-y-4">
                 <div class="flex gap-4">
                     <div class="w-1/3">
@@ -336,7 +356,7 @@
                 </div>
                 <div>
                     <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Google Maps Link</label>
-                    <input v-model="form.mapLink" type="text" placeholder="網址" class="w-full bg-gray-50 p-3 rounded-xl outline-none focus:ring-2 ring-jp-blue/50 text-xs">
+                    <input v-model="form.mapLink" type="text" placeholder="網址 (可選)" class="w-full bg-gray-50 p-3 rounded-xl outline-none focus:ring-2 ring-jp-blue/50 text-xs">
                 </div>
                 <div>
                     <label class="text-[10px] text-gray-400 font-bold ml-1 uppercase">Notes</label>
@@ -357,7 +377,8 @@
 
     createApp({
         setup() {
-            const currentTab = ref('schedule');
+            // 預設 Tab 改為 info
+            const currentTab = ref('info');
             const currentDayIndex = ref(0);
             const exchangeRate = ref(0.215); 
             
@@ -366,7 +387,7 @@
                 { date: '4/9', wd: '四' }, { date: '4/10', wd: '五' }, { date: '4/11', wd: '六' }
             ];
 
-            // 預設行程資料 (會被 localStorage 覆蓋)
+            // 預設行程
             const defaultItineraries = {
                 0: [
                     { id: 101, time: '12:00', location: '抵達沖繩那霸機場 (JX870)', note: '入境、取行李、取車', mapLink: '', weather: '晴時多雲' },
@@ -408,8 +429,8 @@
             const allItineraries = ref(defaultItineraries);
             const allExpenses = ref({ 0: [], 1: [], 2: [], 3: [], 4: [], 5: [] });
             
-            // --- LocalStorage Logic ---
-            const STORAGE_KEY = 'okinawa_trip_2026_data';
+            // LocalStorage
+            const STORAGE_KEY = 'okinawa_trip_2026_data_v2';
             
             const saveData = () => {
                 const data = {
@@ -432,7 +453,6 @@
                 }
             });
 
-            // 監聽變化自動存檔
             watch([allItineraries, allExpenses, exchangeRate], saveData, { deep: true });
 
             const newExpense = ref({ item: '', amount: '', currency: 'JPY' });
